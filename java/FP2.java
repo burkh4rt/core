@@ -47,6 +47,35 @@ public final class FP2 {
 		return (a.iszilch() && b.iszilch());
 	}
 
+
+    public int islarger() {
+        if (iszilch()) return 0;
+        int cmp=b.islarger();
+        if (cmp!=0) return cmp;
+        return a.islarger();
+    }
+
+    public void toBytes(byte[] bf) {
+		byte[] t=new byte[CONFIG_BIG.MODBYTES];
+        b.toBytes(t);
+		for (int i=0;i<CONFIG_BIG.MODBYTES;i++)
+            bf[i]=t[i];
+        a.toBytes(t);
+		for (int i=0;i<CONFIG_BIG.MODBYTES;i++)
+            bf[i+CONFIG_BIG.MODBYTES]=t[i];
+    }
+
+    public static FP2 fromBytes(byte[] bf) {
+		byte[] t=new byte[CONFIG_BIG.MODBYTES];
+		for (int i=0;i<CONFIG_BIG.MODBYTES;i++)
+            t[i]=bf[i];
+        FP tb=FP.fromBytes(t);
+		for (int i=0;i<CONFIG_BIG.MODBYTES;i++)
+            t[i]=bf[i+CONFIG_BIG.MODBYTES];
+        FP ta=FP.fromBytes(t);
+        return new FP2(ta,tb);
+    }
+
 	public void cmove(FP2 g,int d)
 	{
 		a.cmove(g.a,d);
@@ -308,45 +337,72 @@ public final class FP2 {
         copy(r);
     }
 */
-    public int qr()
+    public int qr(FP h)
     {
         FP2 c = new FP2(this);
         c.conj();
         c.mul(this);
 
-        return c.geta().qr(null);
+        return c.geta().qr(h);
     }
 
 /* sqrt(a+ib) = sqrt(a+sqrt(a*a-n*b*b)/2)+ib/(2*sqrt(a+sqrt(a*a-n*b*b)/2)) */
-	public void sqrt()
+	public void sqrt(FP h)
 	{
 		if (iszilch()) return;
 		FP w1=new FP(b);
 		FP w2=new FP(a);
 		FP w3=new FP(a);
+        FP w4=new FP();
+        FP hint=new FP();
+
 		w1.sqr(); w2.sqr(); w1.add(w2); w1.norm();
 		
-		w1=w1.sqrt(null);
+		w1=w1.sqrt(h);
 		
         w2.copy(a); w2.add(w1); 
 		w2.norm(); w2.div2();
 
-        w3.copy(a); w3.sub(w1); 
-		w3.norm(); w3.div2();
-      
-        w2.cmove(w3,w3.qr(null));
+        w1.copy(b); w1.div2();
+        int qr=w2.qr(hint);
 
-        w2.invsqrt(w2,a);
-        w2.mul(a);
-        w2.div2();
+// tweak hint
+        w3.copy(hint); w3.neg(); w3.norm();
+        w4.copy(w2); w4.neg(); w4.norm();
 
-//		w2=w2.sqrt(null);
-//		a.copy(w2);
-//		w2.add(w2); w2.norm();
-//		w2.inverse(null);
+        w2.cmove(w4,1-qr);
+        hint.cmove(w3,1-qr);
 
-		b.mul(w2);
-	
+        a.copy(w2.sqrt(hint));
+        w3.copy(w2); w3.inverse(hint);
+        w3.mul(a);
+        b.copy(w3); b.mul(w1);
+        w4.copy(a);
+
+        a.cmove(b,1-qr);
+        b.cmove(w4,1-qr);
+
+
+
+
+/*
+
+        a.copy(w2.sqrt(hint));
+        w3.copy(w2); w3.inverse(hint);
+        w3.mul(a);
+        b.copy(w3); b.mul(w1);
+
+        hint.neg(); hint.norm();
+        w2.neg(); w2.norm();
+
+        w4.copy(w2.sqrt(hint));
+        w3.copy(w2); w3.inverse(hint);
+        w3.mul(w4);
+        w3.mul(w1);
+
+        a.cmove(w3,1-qr);
+        b.cmove(w4,1-qr);
+*/
         int sgn=this.sign();
         FP2 nr=new FP2(this);
         nr.neg(); nr.norm();
@@ -365,7 +421,7 @@ public final class FP2 {
 	}
 
 /* this=1/this */
-	public void inverse()
+	public void inverse(FP h)
 	{
 		norm();
 		FP w1=new FP(a);
@@ -374,7 +430,7 @@ public final class FP2 {
 		w1.sqr();
 		w2.sqr();
 		w1.add(w2);
-		w1.inverse(null);
+		w1.inverse(h);
 		a.mul(w1);
 		w1.neg();
 		w1.norm();
@@ -421,7 +477,7 @@ public final class FP2 {
 	public void div_ip()
 	{
 		FP2 z=new FP2(1<<CONFIG_FIELD.QNRI,1);
-		z.inverse();
+		z.inverse(null);
 		norm();
 		mul(z);
 		if (CONFIG_FIELD.TOWER==CONFIG_FIELD.POSITOWER) {

@@ -27,16 +27,25 @@ using namespace core;
 
 namespace ZZZ {
 
-/* Curve Params - see rom.c */
+/* Curve Params - see rom*.cpp */
 extern const int CURVE_B_I;
 extern const int CURVE_Cof_I;
 extern const XXX::BIG CURVE_B;     /**< Elliptic curve B parameter */
 extern const XXX::BIG CURVE_Order; /**< Elliptic curve group order */
 extern const XXX::BIG CURVE_Cof;   /**< Elliptic curve cofactor */
+extern const XXX::BIG CURVE_HTPC;  /**< Hash to Point precomputation */
+extern const XXX::BIG CURVE_HTPC2;  /**< Hash to Point precomputation for G2 */
 
-//extern const XXX::BIG CURVE_Ad;
-//extern const XXX::BIG CURVE_Bd;
-//extern const XXX::BIG PC[];
+extern const XXX::BIG CURVE_Ad;
+extern const XXX::BIG CURVE_Bd;
+extern const XXX::BIG PC[];
+
+extern const XXX::BIG CURVE_Adr;
+extern const XXX::BIG CURVE_Adi;
+extern const XXX::BIG CURVE_Bdr;
+extern const XXX::BIG CURVE_Bdi;
+extern const XXX::BIG PCR[];
+extern const XXX::BIG PCI[];
 
 /* Generator point on G1 */
 extern const XXX::BIG CURVE_Gx; /**< x-coordinate of generator point in group G1  */
@@ -291,6 +300,15 @@ extern void ECP_mul(ECP *P, XXX::BIG b);
 	@param f BIG number multiplier
  */
 extern void ECP_mul2(ECP *P, ECP *Q, XXX::BIG e, XXX::BIG f);
+
+/**	@brief Calculates multi-multiplication P=Sigma e_i*X_i, side-channel resistant
+ *
+	@param P ECP instance, on exit = Sigma e_i*X_i
+    @param n Number of multiplications
+	@param X array of n ECPs
+	@param e array of n BIG multipliers
+ */
+extern void ECP_muln(ECP *P,int n,ECP X[],XXX::BIG e[]);
 
 /**	@brief Multiplies random point by co-factor
  *

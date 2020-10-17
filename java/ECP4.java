@@ -128,7 +128,7 @@ public final class ECP4 {
 			y.reduce();
 			return;
 		}
-		z.inverse();
+		z.inverse(null);
 
 		x.mul(z); x.reduce();               // *****
 		y.mul(z); y.reduce();
@@ -168,90 +168,79 @@ public final class ECP4 {
 /* convert to byte array */
 	public void toBytes(byte[] b, boolean compress)
 	{
-		byte[] t=new byte[CONFIG_BIG.MODBYTES];
+		byte[] t=new byte[4*CONFIG_BIG.MODBYTES];
+        boolean alt=false;
 		ECP4 W=new ECP4(this);
-		int MB=CONFIG_BIG.MODBYTES;
-        b[0]=0x06;
+		W.affine();
+		W.x.toBytes(t);
 
-		W.x.geta().getA().toBytes(t);
-		for (int i=0;i<MB;i++) 
-			b[i+1]=t[i];
-		W.x.geta().getB().toBytes(t);
-		for (int i=0;i<MB;i++) 
-			b[i+MB+1]=t[i];
-		W.x.getb().getA().toBytes(t);
-		for (int i=0;i<MB;i++) 
-			b[i+2*MB+1]=t[i];
-		W.x.getb().getB().toBytes(t);
-		for (int i=0;i<MB;i++) 
-			b[i+3*MB+1]=t[i];
+        if ((CONFIG_FIELD.MODBITS-1)%8<=4 && CONFIG_CURVE.ALLOW_ALT_COMPRESS) alt=true;
 
-        if (!compress)
+        if (alt)
         {
-            b[0]=0x04;
-		    W.y.geta().getA().toBytes(t);
-		    for (int i=0;i<MB;i++) 
-			    b[i+4*MB+1]=t[i];
-		    W.y.geta().getB().toBytes(t);
-		    for (int i=0;i<MB;i++) 
-			    b[i+5*MB+1]=t[i];
-		    W.y.getb().getA().toBytes(t);
-		    for (int i=0;i<MB;i++) 
-			    b[i+6*MB+1]=t[i];
-		    W.y.getb().getB().toBytes(t);
-		    for (int i=0;i<MB;i++) 
-			    b[i+7*MB+1]=t[i];
+		    for (int i=0;i<4*CONFIG_BIG.MODBYTES;i++) b[i]=t[i];
+            if (!compress)
+            {
+                W.y.toBytes(t);
+                for (int i=0;i<4*CONFIG_BIG.MODBYTES;i++) b[i+4*CONFIG_BIG.MODBYTES]=t[i];
+            } else {
+                b[0]|=0x80;
+                if (W.y.islarger()==1) b[0]|=0x20;
+            }
         } else {
-            b[0]=0x02;
-            if (W.y.sign() == 1)
-                b[0]=0x03;
-        }
+		    for (int i=0;i<4*CONFIG_BIG.MODBYTES;i++) b[i+1]=t[i];
+            if (!compress)
+            {
+                b[0]=0x04;
+                W.y.toBytes(t);
+		        for (int i=0;i<4*CONFIG_BIG.MODBYTES;i++)
+			        b[i+4*CONFIG_BIG.MODBYTES+1]=t[i];
+            } else {
+                b[0]=0x02;
+                if (W.y.sign() == 1)
+                    b[0]=0x03;
+            }
+	    }
 	}
 
 /* convert from byte array to point */
 	public static ECP4 fromBytes(byte[] b)
 	{
-		byte[] t=new byte[CONFIG_BIG.MODBYTES];
-		BIG ra;
-		BIG rb;
-		int MB=CONFIG_BIG.MODBYTES;
+		byte[] t=new byte[4*CONFIG_BIG.MODBYTES];
+        boolean alt=false;
         int typ=(int)b[0];
 
-		for (int i=0;i<MB;i++) {t[i]=b[i+1];}
-		ra=BIG.fromBytes(t);
-		for (int i=0;i<MB;i++) {t[i]=b[i+MB+1];}
-		rb=BIG.fromBytes(t);
+        if ((CONFIG_FIELD.MODBITS-1)%8<=4 && CONFIG_CURVE.ALLOW_ALT_COMPRESS) alt=true;
 
-		FP2 ra4=new FP2(ra,rb);
-
-		for (int i=0;i<MB;i++) {t[i]=b[i+2*MB+1];}
-		ra=BIG.fromBytes(t);
-		for (int i=0;i<MB;i++) {t[i]=b[i+3*MB+1];}
-		rb=BIG.fromBytes(t);
-
-		FP2 rb4=new FP2(ra,rb);
-		FP4 rx=new FP4(ra4,rb4);
-
-        if (typ==0x04)
+        if (alt)
         {
-		    for (int i=0;i<MB;i++) {t[i]=b[i+4*MB+1];}
-		    ra=BIG.fromBytes(t);
-		    for (int i=0;i<MB;i++) {t[i]=b[i+5*MB+1];}
-		    rb=BIG.fromBytes(t);
-
-		    ra4=new FP2(ra,rb);
-
-		    for (int i=0;i<MB;i++) {t[i]=b[i+6*MB+1];}
-		    ra=BIG.fromBytes(t);
-		    for (int i=0;i<MB;i++) {t[i]=b[i+7*MB+1];}
-		    rb=BIG.fromBytes(t);
-
-		    rb4=new FP2(ra,rb);
-		    FP4 ry=new FP4(ra4,rb4);
-    		return new ECP4(rx,ry);
+            for (int i=0;i<4*CONFIG_BIG.MODBYTES;i++) t[i]=b[i];
+            t[0]&=0x1f;
+            FP4 rx=FP4.fromBytes(t);
+            if ((b[0]&0x80)==0)
+            {
+                for (int i=0;i<4*CONFIG_BIG.MODBYTES;i++) t[i]=b[i+4*CONFIG_BIG.MODBYTES];
+                FP4 ry=FP4.fromBytes(t);
+                return new ECP4(rx,ry);
+            } else {
+                int sgn=(b[0]&0x20)>>5;
+                ECP4 P=new ECP4(rx,0);
+                int cmp=P.y.islarger();
+                if ((sgn==1 && cmp!=1) || (sgn==0 && cmp==1)) P.neg();
+                return P;
+            }
         } else {
-            return new ECP4(rx,typ&1);
-        }       
+		    for (int i=0;i<4*CONFIG_BIG.MODBYTES;i++) t[i]=b[i+1];
+            FP4 rx=FP4.fromBytes(t);
+            if (typ == 0x04)
+            {
+		        for (int i=0;i<4*CONFIG_BIG.MODBYTES;i++) t[i]=b[i+4*CONFIG_BIG.MODBYTES+1];
+		        FP4 ry=FP4.fromBytes(t);
+		        return new ECP4(rx,ry);
+            } else {
+                return new ECP4(rx,typ&1);
+            }
+        } 
 	}
 
 /* convert this to hex string */
@@ -301,11 +290,12 @@ public final class ECP4 {
 		x=new FP4(ix);
 		y=new FP4(1);
 		z=new FP4(1);
+        FP h=new FP();
 		x.norm();
 		FP4 rhs=RHS(x);
-		if (rhs.qr()==1) 
+		if (rhs.qr(h)==1) 
 		{
-            rhs.sqrt();
+            rhs.sqrt(h);
             if (rhs.sign() != s)
                 rhs.neg();
             rhs.reduce();
@@ -463,7 +453,7 @@ public final class ECP4 {
 			if (CONFIG_CURVE.SEXTIC_TWIST == CONFIG_CURVE.M_TYPE)
 			{
 				F1.mul_ip();
-				F1.inverse();
+				F1.inverse(null);
 				F0.copy(F1); F0.sqr();
 			}
 			F0.mul_ip(); F0.norm();
@@ -702,11 +692,11 @@ public final class ECP4 {
         FP4 T=new FP4(H);
         sgn=T.sign();
 
-        FP Z=new FP(CONFIG_FIELD.RIADZG2);
+        FP Z=new FP(CONFIG_FIELD.RIADZG2A);
         FP4 X1=new FP4(Z);
         FP4 A=RHS(X1);
         FP4 W=new FP4(A);
-        W.sqrt();
+        W.sqrt(null);
         FP s=new FP(new BIG(ROM.SQRTm3));
         Z.mul(s);
 
@@ -717,7 +707,7 @@ public final class ECP4 {
         NY.copy(T); NY.mul(Y); 
 
         NY.qmul(Z);
-        NY.inverse();
+        NY.inverse(null);
 
         W.qmul(Z);
         if (W.sign()==1)
@@ -739,11 +729,11 @@ public final class ECP4 {
         X3.add(A); X3.norm();
 
         Y.copy(RHS(X2));
-        X3.cmove(X2,Y.qr());
+        X3.cmove(X2,Y.qr(null));
         Y.copy(RHS(X1));
-        X3.cmove(X1,Y.qr());
+        X3.cmove(X1,Y.qr(null));
         Y.copy(RHS(X3));
-        Y.sqrt();
+        Y.sqrt(null);
 
         ne=Y.sign()^sgn;
         W.copy(Y); W.neg(); W.norm();

@@ -48,6 +48,7 @@ extern const BIG_XXX ROI_YYY;	    /**< Root of unity set in rom_field_yyy.c */
 extern const BIG_XXX R2modp_YYY;	/**< Montgomery constant */
 extern const BIG_XXX CRu_YYY;       /**< Cube Root of Unity */
 extern const BIG_XXX SQRTm3_YYY; /**< Square root of -3 */
+extern const BIG_XXX TWK_YYY; /**< Tweak for square roots, pre-calculated from field norm */
 extern const chunk MConst_YYY;		/**< Constant associated with Modulus - for Montgomery = 1/p mod 2^BASEBITS */
 
 
@@ -77,6 +78,29 @@ extern void FP_YYY_from_int(FP_YYY *x,int a);
 	@return 1 if zero, else returns 0
  */
 extern int FP_YYY_iszilch(FP_YYY *x);
+
+
+/**	@brief Tests for lexically largest 
+ *
+	@param x FP number to be tested if larger than -x
+	@return 1 if larger, else returns 0
+ */
+extern int FP_YYY_islarger(FP_YYY *x);
+
+/**	@brief Serialize out FP  
+ *
+    @param b buffer for output
+	@param x FP number to be serialized
+ */
+extern void FP_YYY_toBytes(char *b,FP_YYY *x);
+
+/**	@brief Serialize in FP  
+ *
+	@param x FP number to be serialized
+    @param b buffer for input
+ */
+extern void FP_YYY_fromBytes(FP_YYY *x,char *b);
+
 
 
 /**	@brief Tests for FP equal to one mod Modulus
@@ -150,6 +174,7 @@ extern void FP_YYY_redc(BIG_XXX x, FP_YYY *y);
 	@param x FP number to be set equal to unity.
  */
 extern void FP_YYY_one(FP_YYY *x);
+
 
 /**	@brief returns "sign" of an FP
  *

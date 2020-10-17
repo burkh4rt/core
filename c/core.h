@@ -56,25 +56,25 @@
 
 /* Pairing-Friendly types */
 
-#define NOT_PF 0
-#define BN_CURVE 1
-#define BLS12_CURVE 2
-#define BLS24_CURVE 3
-#define BLS48_CURVE 4
+#define NOT_PF 0        /**< Not a pairing friendly curve */
+#define BN_CURVE 1      /**< BN pairing-friendy curve */
+#define BLS12_CURVE 2   /**< BLS12 pairing-friendy curve */
+#define BLS24_CURVE 3   /**< BLS24 pairing-friendy curve */
+#define BLS48_CURVE 4   /**< BLS48 pairing-friendy curve */
 
 
-#define D_TYPE 0
-#define M_TYPE 1
+#define D_TYPE 0        /**< D-Type pairing-friendy curve */
+#define M_TYPE 1        /**< M-Type pairing-friendy curve */
 
-#define FP_ZILCH 0
-#define FP_UNITY 1
-#define FP_SPARSEST 2
-#define FP_SPARSER 3
-#define FP_SPARSE 4
-#define FP_DENSE 5
+#define FP_ZILCH 0      /**< FP extension is zero */
+#define FP_UNITY 1      /**< FP extension is one */
+#define FP_SPARSEST 2   /**< FP extension is sparsest */
+#define FP_SPARSER 3    /**< FP extension is sparser */
+#define FP_SPARSE 4     /**< FP extension is sparse */
+#define FP_DENSE 5      /**< FP extension is dense */
 
-#define NEGATOWER 0			// Extension field tower type
-#define POSITOWER 1
+#define NEGATOWER 0			/**< Negative towering */
+#define POSITOWER 1         /**< Positive towering */
 
 /**
  * @brief SHA256 hash function instance */
@@ -110,8 +110,8 @@ typedef struct
     int len;           /**< Hash length in bytes */
 } sha3;
 
-#define MC_SHA2 2
-#define MC_SHA3 3
+#define MC_SHA2 2       /**< SHA2 family member */
+#define MC_SHA3 3       /**< SHA3 family member */
 
 #define SHA256 32 /**< SHA-256 hashing */
 #define SHA384 48 /**< SHA-384 hashing */
@@ -130,11 +130,11 @@ typedef struct
 
 //q= 12289
 
-#define RLWE_PRIME 0x3001	// q in Hex
-#define RLWE_LGN 10			// Degree n=2^LGN
-#define RLWE_ND 0xF7002FFF	// 1/(R-q) mod R
-#define RLWE_ONE 0x2AC8		// R mod q
-#define RLWE_R2MODP 0x1620	// R^2 mod q
+#define RLWE_PRIME 0x3001	/**< q in Hex */
+#define RLWE_LGN 10			/**< Degree n=2^LGN */
+#define RLWE_ND 0xF7002FFF	/**< 1/(R-q) mod R */
+#define RLWE_ONE 0x2AC8		/**< R mod q */
+#define RLWE_R2MODP 0x1620	/**< R^2 mod q */
 
 /* Symmetric Encryption AES structure */
 
@@ -600,6 +600,58 @@ extern void KDF2(int hash, int hlen, octet *K, int len, octet *Z, octet *P);
 	@param K is the derived key
  */
 extern void PBKDF2(int hash, int hlen, octet *K, int len, octet *P, octet *S, int rep);
+
+
+
+
+/** @brief PKCS V1.5 padding of a message prior to RSA signature
+ *
+    @param h is the hash type
+    @param M is the input message
+    @param W is the output encoding, ready for RSA signature
+    @return 1 if OK, else 0
+ */
+extern int PKCS15(int h, octet *M, octet *W);
+
+
+/** @brief PSS padding of a message prior to RSA signature
+ *
+    @param h is the hash type
+    @param M is the input message
+    @param R is a pointer to a cryptographically secure random number generator
+    @param W is the output encoding, ready for RSA signature
+    @return 1 if OK, else 0
+ */
+extern int PSS_ENCODE(int h, octet *M, csprng *R, octet *W);
+
+/** @brief PSS verification
+ *
+    @param h is the hash type
+    @param M is the message
+    @param W is the message encoding
+    @return 1 if OK, else 0
+ */
+extern int PSS_VERIFY(int h, octet *M, octet *W);
+
+/** @brief OAEP padding of a message prior to RSA encryption
+ *
+    @param h is the hash type
+    @param M is the input message
+    @param R is a pointer to a cryptographically secure random number generator
+    @param P are input encoding parameter string (could be NULL)
+    @param F is the output encoding, ready for RSA encryption
+    @return 1 if OK, else 0
+ */
+extern int  OAEP_ENCODE(int h, octet *M, csprng *R, octet *P, octet *F);
+/** @brief OAEP unpadding of a message after RSA decryption
+ *
+    Unpadding is done in-place
+    @param h is the hash type
+    @param P are input encoding parameter string (could be NULL)
+    @param F is input padded message, unpadded on output
+    @return 1 if OK, else 0
+ */
+extern int  OAEP_DECODE(int h, octet *P, octet *F);
 
 
 /* AES functions */

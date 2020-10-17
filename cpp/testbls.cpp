@@ -17,7 +17,7 @@
  * limitations under the License.
  */
 
-/* test driver and function exerciser for BLS Signature API Functions */
+/* Test driver and function exerciser for Boneh-Lynn-Shacham BLS Signature API Functions */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -306,7 +306,7 @@ int main()
     bls_BN254(&RNG);
 
 #if CHUNK!=16
-    printf("\nTesting BLS signature for curve BLS383\n");
+    printf("\nTesting BLS signature for curve BLS12383\n");
     bls_BLS12383(&RNG);
 
     printf("\nTesting BLS signature for curve BLS24479\n");

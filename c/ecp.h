@@ -36,6 +36,19 @@ extern const int CURVE_B_I_ZZZ;       /**< Elliptic curve B_i parameter */
 extern const BIG_XXX CURVE_B_ZZZ;     /**< Elliptic curve B parameter */
 extern const BIG_XXX CURVE_Order_ZZZ; /**< Elliptic curve group order */
 extern const BIG_XXX CURVE_Cof_ZZZ;   /**< Elliptic curve cofactor */
+extern const BIG_XXX CURVE_HTPC_ZZZ;  /**< Hash to Point precomputation */
+extern const BIG_XXX CURVE_HTPC2_ZZZ;  /**< Hash to Point precomputation for G2 */ 
+
+extern const BIG_XXX CURVE_Ad_ZZZ;      /**< A parameter of isogenous curve */
+extern const BIG_XXX CURVE_Bd_ZZZ;      /**< B parameter of isogenous curve */
+extern const BIG_XXX PC_ZZZ[];          /**< Precomputed isogenies  */
+
+extern const BIG_XXX CURVE_Adr_ZZZ;     /**< Real part of A parameter of isogenous curve in G2 */
+extern const BIG_XXX CURVE_Adi_ZZZ;     /**< Imaginary part of A parameter of isogenous curve in G2 */
+extern const BIG_XXX CURVE_Bdr_ZZZ;     /**< Real part of B parameter of isogenous curve in G2 */
+extern const BIG_XXX CURVE_Bdi_ZZZ;     /**< Imaginary part of B parameter of isogenous curve in G2 */
+extern const BIG_XXX PCR_ZZZ[];         /**< Real parts of precomputed isogenies */
+extern const BIG_XXX PCI_ZZZ[];         /**< Imaginary parts of precomputed isogenies */
 
 /* Generator point on G1 */
 extern const BIG_XXX CURVE_Gx_ZZZ; /**< x-coordinate of generator point in group G1  */
@@ -319,6 +332,17 @@ extern void ECP_ZZZ_mul(ECP_ZZZ *P, BIG_XXX b);
 	@param f BIG number multiplier
  */
 extern void ECP_ZZZ_mul2(ECP_ZZZ *P, ECP_ZZZ *Q, BIG_XXX e, BIG_XXX f);
+
+/**	@brief Calculates multi-multiplication P=Sigma e_i*X_i, side-channel resistant
+ *
+	@param P ECP instance, on exit = Sigma e_i*X_i
+    @param n Number of multiplications
+	@param X array of n ECPs
+	@param e array of n BIG multipliers
+ */
+extern void ECP_ZZZ_muln(ECP_ZZZ *P,int n,ECP_ZZZ X[],BIG_XXX e[]);
+
+
 /**	@brief Get Group Generator from ROM
  *
 	@param G ECP instance

@@ -21,6 +21,7 @@
 /* SU=m, m is Stack Usage */
 
 #include "ecp2_ZZZ.h"
+#include "ecp_ZZZ.h"
 
 int ECP2_ZZZ_isinf(ECP2_ZZZ *P)
 {
@@ -115,7 +116,7 @@ void ECP2_ZZZ_affine(ECP2_ZZZ *P)
         return;
     }
 
-    FP2_YYY_inv(&iz, &(P->z));
+    FP2_YYY_inv(&iz, &(P->z),NULL);
     FP2_YYY_mul(&(P->x), &(P->x), &iz);
     FP2_YYY_mul(&(P->y), &(P->y), &iz);
 
@@ -178,53 +179,84 @@ void ECP2_ZZZ_outputxyz(ECP2_ZZZ *P)
 /* Convert Q to octet string */
 void ECP2_ZZZ_toOctet(octet *W, ECP2_ZZZ *Q, bool compress)
 {
-    BIG_XXX b;
     FP2_YYY qx, qy;
+    bool alt=false;
     ECP2_ZZZ_get(&qx, &qy, Q);
 
-    FP_YYY_redc(b, &(qx.a));
-    BIG_XXX_toBytes(&(W->val[1]), b);
-    FP_YYY_redc(b, &(qx.b));
-    BIG_XXX_toBytes(&(W->val[MODBYTES_XXX+1]), b);
-    if (!compress)
+#if (MBITS-1)%8 <= 4
+#ifdef ALLOW_ALT_COMPRESS_ZZZ
+    alt=true;
+#endif
+#endif
+
+    if (alt)
     {
-        W->val[0] = 0x04;
-        FP_YYY_redc(b, &(qy.a));
-        BIG_XXX_toBytes(&(W->val[2 * MODBYTES_XXX+1]), b);
-        FP_YYY_redc(b, &(qy.b));
-        BIG_XXX_toBytes(&(W->val[3 * MODBYTES_XXX+1]), b);
-
-        W->len = 4 * MODBYTES_XXX+1;
+        FP2_YYY_toBytes(&(W->val[0]),&qx);
+        if (!compress)
+        {
+            W->len=4*MODBYTES_XXX;
+            FP2_YYY_toBytes(&(W->val[2*MODBYTES_XXX]), &qy);
+        } else {
+            W->val[0]|=0x80;
+            if (FP2_YYY_islarger(&qy)==1) W->val[0]|=0x20;
+            W->len=2*MODBYTES_XXX;
+        }
     } else {
-        W->val[0]=0x02;
-        if (FP2_YYY_sign(&qy)==1) W->val[0] = 0x03;
-        W->len = 2 * MODBYTES_XXX + 1;
+        FP2_YYY_toBytes(&(W->val[1]),&qx);
+        if (!compress)
+        {
+            W->val[0] = 0x04;
+            FP2_YYY_toBytes(&(W->val[2 * MODBYTES_XXX+1]), &qy);
+            W->len = 4 * MODBYTES_XXX + 1;
+        } else {
+            W->val[0]=0x02;
+            if (FP2_YYY_sign(&qy)==1) W->val[0] = 0x03;
+            W->len = 2 * MODBYTES_XXX + 1;
+        }
     }
-
 }
 
 /* SU= 176 */
 /* restore Q from octet string */
 int ECP2_ZZZ_fromOctet(ECP2_ZZZ *Q, octet *W)
 {
-    BIG_XXX b;
     FP2_YYY qx, qy;
-    int typ = W->val[0];
+    bool alt=false;
+    int sgn,cmp,typ = W->val[0];
 
-    BIG_XXX_fromBytes(b, &(W->val[1]));
-    FP_YYY_nres(&(qx.a), b);
-    BIG_XXX_fromBytes(b, &(W->val[MODBYTES_XXX+1]));
-    FP_YYY_nres(&(qx.b), b);
-    if (typ == 0x04)
+#if (MBITS-1)%8 <= 4
+#ifdef ALLOW_ALT_COMPRESS_ZZZ
+    alt=true;
+#endif
+#endif
+
+    if (alt)
     {
-        BIG_XXX_fromBytes(b, &(W->val[2 * MODBYTES_XXX+1]));
-        FP_YYY_nres(&(qy.a), b);
-        BIG_XXX_fromBytes(b, &(W->val[3 * MODBYTES_XXX+1]));
-        FP_YYY_nres(&(qy.b), b);
+        W->val[0]&=0x1f;
+        FP2_YYY_fromBytes(&qx,&(W->val[0]));
+        W->val[0]=typ;
+        if (typ&0x80==0)
+        {
+            FP2_YYY_fromBytes(&qy,&(W->val[2*MODBYTES_XXX]));
+            if (ECP2_ZZZ_set(Q, &qx, &qy)) return 1;
+            return 0;
+        } else {
+            if (!ECP2_ZZZ_setx(Q,&qx,0)) return 0;
+            sgn=(typ&0x20)>>5;
+            cmp=FP2_YYY_islarger(&(Q->y));
+            if ((sgn==1 && cmp!=1) || (sgn==0 && cmp==1)) ECP2_ZZZ_neg(Q);
+            return 1;
+        }
 
-        if (ECP2_ZZZ_set(Q, &qx, &qy)) return 1;
     } else {
-        if (ECP2_ZZZ_setx(Q, &qx, typ&1)) return 1;
+        FP2_YYY_fromBytes(&qx,&(W->val[1]));
+        if (typ == 0x04)
+        {
+            FP2_YYY_fromBytes(&qy,&(W->val[2 * MODBYTES_XXX+1]));
+            if (ECP2_ZZZ_set(Q, &qx, &qy)) return 1;
+        } else {
+            if (ECP2_ZZZ_setx(Q, &qx, typ&1)) return 1;
+        }
     }
     return 0;
 }
@@ -290,14 +322,15 @@ int ECP2_ZZZ_set(ECP2_ZZZ *P, FP2_YYY *x, FP2_YYY *y)
 int ECP2_ZZZ_setx(ECP2_ZZZ *P, FP2_YYY *x, int s)
 {
     FP2_YYY y;
+    FP_YYY h;
     ECP2_ZZZ_rhs(&y, x);
 
-    if (!FP2_YYY_qr(&y))
+    if (!FP2_YYY_qr(&y,&h))
     {
         ECP2_ZZZ_inf(P);
         return 0;
     }
-    FP2_YYY_sqrt(&y, &y);
+    FP2_YYY_sqrt(&y, &y, &h);
 
     FP2_YYY_copy(&(P->x), x);
     FP2_YYY_copy(&(P->y), &y);
@@ -657,27 +690,150 @@ void ECP2_ZZZ_hap2point(ECP2_ZZZ *Q,BIG_XXX h)
 */
 /* Constant time Map to Point in G2 */
 void ECP2_ZZZ_map2point(ECP2_ZZZ *Q,FP2_YYY *H)
-{ // SWU method. Assumes p=3 mod 4.
+{ // SSWU plus isogenies method
 
-    int sgn,ne;
+    int i,k,sgn,ne,isox,isoy,iso=HTC_ISO_G2_ZZZ;
     FP2_YYY X1,X2,X3,W,Y,T,A,NY;
-    FP_YYY Z,s;
+    FP_YYY s;
+#if HTC_ISO_G2_ZZZ != 0
+    FP_YYY hint;
+    FP2_YYY ZZ,Ad,Bd,D,D2,GX1;
+    FP2_YYY xnum,xden,ynum,yden;
+    FP2_YYY_from_ints(&ZZ,RIADZG2A_ZZZ,RIADZG2B_ZZZ);
+
+    FP2_YYY_rcopy(&Ad,CURVE_Adr_ZZZ,CURVE_Adi_ZZZ);
+    FP2_YYY_rcopy(&Bd,CURVE_Bdr_ZZZ,CURVE_Bdi_ZZZ);
 
     FP2_YYY_one(&NY);
     FP2_YYY_copy(&T,H);
     sgn=FP2_YYY_sign(&T);
 
-    FP_YYY_from_int(&Z,RIADZG2_YYY);
+    FP2_YYY_sqr(&T,&T);
+    FP2_YYY_mul(&T,&T,&ZZ);
+    FP2_YYY_add(&W,&T,&NY);
+    FP2_YYY_norm(&W);
+
+    FP2_YYY_mul(&W,&W,&T);
+    FP2_YYY_mul(&D,&Ad,&W);
+
+    FP2_YYY_add(&W,&W,&NY);
+    FP2_YYY_norm(&W);
+    FP2_YYY_mul(&W,&W,&Bd);
+    FP2_YYY_neg(&W,&W);
+    FP2_YYY_norm(&W);
+
+    FP2_YYY_copy(&X2,&W);
+    FP2_YYY_mul(&X3,&T,&X2);
+
+// x^3+Ad^2x+Bd^3
+    FP2_YYY_sqr(&GX1,&X2);
+    FP2_YYY_sqr(&D2,&D); FP2_YYY_mul(&W,&Ad,&D2); FP2_YYY_add(&GX1,&GX1,&W); FP2_YYY_norm(&GX1); FP2_YYY_mul(&GX1,&GX1,&X2); FP2_YYY_mul(&D2,&D2,&D); FP2_YYY_mul(&W,&Bd,&D2); FP2_YYY_add(&GX1,&GX1,&W); FP2_YYY_norm(&GX1);
+
+    FP2_YYY_mul(&W,&GX1,&D);
+    int qr=FP2_YYY_qr(&W,&hint);   // qr(ad) - only exp happens here
+    FP2_YYY_inv(&D,&W,&hint);     // d=1/(ad)
+    FP2_YYY_mul(&D,&D,&GX1);     // 1/d
+    FP2_YYY_mul(&X2,&X2,&D);     // X2/=D
+    FP2_YYY_mul(&X3,&X3,&D);     // X3/=D
+    FP2_YYY_mul(&T,&T,H);        // t=Z.u^3
+    FP2_YYY_sqr(&D2,&D);
+
+// first solution - X2, W, hint, D2
+
+    FP2_YYY_mul(&D,&D2,&T);     // second candidate if X3 is correct
+    FP2_YYY_mul(&T,&W,&ZZ); 
+
+    FP_YYY_rcopy(&s,CURVE_HTPC2_ZZZ);     
+    FP_YYY_mul(&s,&s,&hint); // modify hint
+
+    FP2_YYY_cmove(&X2,&X3,1-qr); 
+    FP2_YYY_cmove(&W,&T,1-qr);
+    FP2_YYY_cmove(&D2,&D,1-qr);
+    FP_YYY_cmove(&hint,&s,1-qr);
+
+    FP2_YYY_sqrt(&Y,&W,&hint);  // first candidate if X2 is correct
+    FP2_YYY_mul(&Y,&Y,&D2);
+
+    ne=FP2_YYY_sign(&Y)^sgn;
+    FP2_YYY_neg(&NY,&Y); FP2_YYY_norm(&NY);
+    FP2_YYY_cmove(&Y,&NY,ne);
+
+// (X2,Y) is on isogenous curve
+
+    k=0;
+    isox=iso;
+    isoy=3*(iso-1)/2;
+
+// xnum
+    FP2_YYY_rcopy(&xnum,PCR_ZZZ[k],PCI_ZZZ[k]); k++;
+    for (i=0;i<isox;i++)
+    {
+        FP2_YYY_mul(&xnum,&xnum,&X2); 
+        FP2_YYY_rcopy(&W,PCR_ZZZ[k],PCI_ZZZ[k]); k++;
+        FP2_YYY_add(&xnum,&xnum,&W); FP2_YYY_norm(&xnum);
+    }
+
+// xden
+    FP2_YYY_copy(&xden,&X2);
+    FP2_YYY_rcopy(&W,PCR_ZZZ[k],PCI_ZZZ[k]); k++;
+    FP2_YYY_add(&xden,&xden,&W); FP2_YYY_norm(&xden);
+    for (i=0;i<isox-2;i++)
+    {
+        FP2_YYY_mul(&xden,&xden,&X2);
+        FP2_YYY_rcopy(&W,PCR_ZZZ[k],PCI_ZZZ[k]); k++;
+        FP2_YYY_add(&xden,&xden,&W); FP2_YYY_norm(&xden);
+    }
+
+// ynum
+        FP2_YYY_rcopy(&ynum,PCR_ZZZ[k],PCI_ZZZ[k]); k++;
+        for (i=0;i<isoy;i++)
+        {
+            FP2_YYY_mul(&ynum,&ynum,&X2); 
+            FP2_YYY_rcopy(&W,PCR_ZZZ[k],PCI_ZZZ[k]); k++;
+            FP2_YYY_add(&ynum,&ynum,&W); FP2_YYY_norm(&ynum);
+        }
+
+// yden 
+        FP2_YYY_copy(&yden,&X2);
+        FP2_YYY_rcopy(&W,PCR_ZZZ[k],PCI_ZZZ[k]); k++;
+        FP2_YYY_add(&yden,&yden,&W); FP2_YYY_norm(&yden);
+      
+        for (i=0;i<isoy-1;i++)
+        {
+            FP2_YYY_mul(&yden,&yden,&X2); 
+            FP2_YYY_rcopy(&W,PCR_ZZZ[k],PCI_ZZZ[k]); k++;
+            FP2_YYY_add(&yden,&yden,&W); FP2_YYY_norm(&yden);
+        }
+
+        FP2_YYY_mul(&ynum,&ynum,&Y);
+
+
+
+        FP2_YYY_mul(&T,&xnum,&yden);
+        FP2_YYY_copy(&(Q->x),&T);
+
+        FP2_YYY_mul(&T,&ynum,&xden);
+        FP2_YYY_copy(&(Q->y),&T);
+
+        FP2_YYY_mul(&T,&xden,&yden);
+        FP2_YYY_copy(&(Q->z),&T);
+
+#else
+    FP_YYY Z;
+    FP2_YYY_one(&NY);
+    FP2_YYY_copy(&T,H);
+    sgn=FP2_YYY_sign(&T);
+
+    FP_YYY_from_int(&Z,RIADZG2A_YYY);
     FP2_YYY_from_FP(&A,&Z);
     ECP2_ZZZ_rhs(&A,&A);  // A=g(Z)
 
-   if (CURVE_B_I_ZZZ==4 && SEXTIC_TWIST_ZZZ==M_TYPE && RIADZG2_YYY==-1)
+   if (CURVE_B_I_ZZZ==4 && SEXTIC_TWIST_ZZZ==M_TYPE && RIADZG2A_YYY==-1 && RIADZG2B_YYY==0)
     { // special case for BLS12381
         FP2_YYY_from_ints(&W,2,1);
     } else {
-        FP2_YYY_sqrt(&W,&A);   // sqrt(g(Z))
+        FP2_YYY_sqrt(&W,&A,NULL);   // sqrt(g(Z))
     }
-    FP2_YYY_sqrt(&W,&A);   // sqrt(g(Z))
 
     FP_YYY_rcopy(&s,SQRTm3_YYY);
 
@@ -691,7 +847,7 @@ void ECP2_ZZZ_map2point(ECP2_ZZZ *Q,FP2_YYY *H)
 
     FP2_YYY_pmul(&NY,&NY,&Z);
 
-    FP2_YYY_inv(&NY,&NY);     // tv3=inv0(tv1*tv2)
+    FP2_YYY_inv(&NY,&NY,NULL);     // tv3=inv0(tv1*tv2)
 
     FP2_YYY_pmul(&W,&W,&Z); // tv4=Z*sqrt(-3).sqrt(g(Z))
     if (FP2_YYY_sign(&W)==1)
@@ -704,7 +860,7 @@ void ECP2_ZZZ_map2point(ECP2_ZZZ *Q,FP2_YYY *H)
     FP2_YYY_mul(&W,&W,&Y);
     FP2_YYY_mul(&W,&W,&NY);     // tv5=u*tv1*tv3*tv4*Z*sqrt(-3)
 
-    FP2_YYY_from_ints(&X1,RIADZG2_YYY,0);
+    FP2_YYY_from_ints(&X1,RIADZG2A_YYY,RIADZG2B_YYY);
     FP2_YYY_copy(&X3,&X1);
     FP2_YYY_neg(&X1,&X1); FP2_YYY_norm(&X1); FP2_YYY_div2(&X1,&X1); // -Z/2
     FP2_YYY_copy(&X2,&X1);
@@ -721,17 +877,18 @@ void ECP2_ZZZ_map2point(ECP2_ZZZ *Q,FP2_YYY *H)
 
 
     ECP2_ZZZ_rhs(&W,&X2);
-    FP2_YYY_cmove(&X3,&X2,FP2_YYY_qr(&W));
+    FP2_YYY_cmove(&X3,&X2,FP2_YYY_qr(&W,NULL));
     ECP2_ZZZ_rhs(&W,&X1);
-    FP2_YYY_cmove(&X3,&X1,FP2_YYY_qr(&W));
+    FP2_YYY_cmove(&X3,&X1,FP2_YYY_qr(&W,NULL));
     ECP2_ZZZ_rhs(&W,&X3);
-    FP2_YYY_sqrt(&Y,&W);
+    FP2_YYY_sqrt(&Y,&W,NULL);
 
     ne=FP2_YYY_sign(&Y)^sgn;
     FP2_YYY_neg(&W,&Y); FP2_YYY_norm(&W);
     FP2_YYY_cmove(&Y,&W,ne);
 
     ECP2_ZZZ_set(Q,&X3,&Y);
+#endif
 }
 
 /* Map octet to point */
@@ -766,7 +923,7 @@ void ECP2_ZZZ_cfp(ECP2_ZZZ *Q)
     FP2_YYY_from_FPs(&X, &Fx, &Fy);
 
 #if SEXTIC_TWIST_ZZZ==M_TYPE
-    FP2_YYY_inv(&X, &X);
+    FP2_YYY_inv(&X, &X,NULL);
     FP2_YYY_norm(&X);
 #endif
 
@@ -829,10 +986,8 @@ int ECP2_ZZZ_generator(ECP2_ZZZ *G)
 {
     FP2_YYY wx, wy;
 
-    FP_YYY_rcopy(&(wx.a), CURVE_Pxa_ZZZ);
-    FP_YYY_rcopy(&(wx.b), CURVE_Pxb_ZZZ);
-    FP_YYY_rcopy(&(wy.a), CURVE_Pya_ZZZ);
-    FP_YYY_rcopy(&(wy.b), CURVE_Pyb_ZZZ);
+    FP2_YYY_rcopy(&wx,CURVE_Pxa_ZZZ,CURVE_Pxb_ZZZ);
+    FP2_YYY_rcopy(&wy,CURVE_Pya_ZZZ,CURVE_Pyb_ZZZ);
 
     return ECP2_ZZZ_set(G, &wx, &wy);
 }

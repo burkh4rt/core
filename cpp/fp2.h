@@ -44,6 +44,29 @@ typedef struct
 	@return 1 if zero, else returns 0
  */
 extern int FP2_iszilch(FP2 *x);
+
+/**	@brief Tests for lexically larger 
+ *
+	@param x FP2 number to be tested if larger than -x
+	@return 1 if larger, else returns 0
+ */
+extern int FP2_islarger(FP2 *x);
+
+
+/**	@brief Serialize out FP2  
+ *
+    @param b buffer for output
+	@param x FP2 number to be serialized
+ */
+extern void FP2_toBytes(char *b,FP2 *x);
+
+/**	@brief Serialize in FP2  
+ *
+	@param x FP2 number to be serialized
+    @param b buffer for input
+ */
+extern void FP2_fromBytes(FP2 *x,char *b);
+
 /**	@brief Conditional copy of FP2 number
  *
 	Conditionally copies second parameter to the first (without branching)
@@ -121,6 +144,14 @@ extern void FP2_zero(FP2 *x);
 	@param x FP2 instance to be set to one
  */
 extern void FP2_one(FP2 *x);
+
+/**	@brief Copy from ROM to an FP2
+ *
+	@param w FP2 number to be copied to
+	@param a BIG real part to be copied from ROM
+	@param b BIG imag part to be copied from ROM
+ */
+extern void FP2_rcopy(FP2 *w,const XXX::BIG a,const XXX::BIG b);
 
 /**	@brief Sign of FP2
  *
@@ -200,11 +231,12 @@ extern void FP2_rawoutput(FP2 *x);
 	@param x FP2 instance, on exit = 1/y
 	@param y FP2 instance
  */
-extern void FP2_inv(FP2 *x, FP2 *y);
+extern void FP2_inv(FP2 *x, FP2 *y, FP *h);
 /**	@brief Divide an FP2 by 2
  *
 	@param x FP2 instance, on exit = y/2
 	@param y FP2 instance
+    @param h optional input hint
  */
 extern void FP2_div2(FP2 *x, FP2 *y);
 /**	@brief Multiply an FP2 by (1+sqrt(-1))
@@ -241,17 +273,19 @@ extern void FP2_pow(FP2 *x, FP2 *y, XXX::BIG b);
 /**	@brief Test FP2 for QR
  *
 	@param x FP2 instance
+    @param h optional generated hint
 	@return true or false
  */
-extern int FP2_qr(FP2 *x);
+extern int FP2_qr(FP2 *x,FP *h);
 
 
 /**	@brief Square root of an FP2
  *
 	@param x FP2 instance, on exit = sqrt(y)
 	@param y FP2 instance
+    @param h optional input hint
  */
-extern void FP2_sqrt(FP2 *x, FP2 *y);
+extern void FP2_sqrt(FP2 *x, FP2 *y, FP *h);
 
 /**	@brief Multiply an FP2 by sqrt(-1)
  *

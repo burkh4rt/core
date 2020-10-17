@@ -52,10 +52,10 @@ impl ECP8 {
         E.z.one();
         E.x.norm();
 
-        let mut rhs = ECP8::rhs(&E.x);
+        let rhs = ECP8::rhs(&E.x);
         let mut y2 = FP8::new_copy(&E.y);
         y2.sqr();
-        if !y2.equals(&mut rhs) {
+        if !y2.equals(&rhs) {
             E.inf();
         }
         return E;
@@ -64,14 +64,15 @@ impl ECP8 {
     /* construct this from x - but set to O if not on curve */
     pub fn new_fp8(ix: &FP8, s:isize) -> ECP8 {
         let mut E = ECP8::new();
+        let mut h = FP::new();
         E.x.copy(&ix);
         E.y.one();
         E.z.one();
         E.x.norm();
 
         let mut rhs = ECP8::rhs(&E.x);
- 	    if rhs.qr() == 1 {
-		    rhs.sqrt();
+ 	    if rhs.qr(Some(&mut h)) == 1 {
+		    rhs.sqrt(Some(&h));
 		    if rhs.sign() != s {
 			    rhs.neg();
 		    }
@@ -146,20 +147,20 @@ impl ECP8 {
     }
 
     /* Test if P == Q */
-    pub fn equals(&mut self, Q: &mut ECP8) -> bool {
+    pub fn equals(&self, Q: &ECP8) -> bool {
         let mut a = FP8::new_copy(&self.x);
         let mut b = FP8::new_copy(&Q.x);
 
         a.mul(&Q.z);
         b.mul(&self.z);
-        if !a.equals(&mut b) {
+        if !a.equals(&b) {
             return false;
         }
         a.copy(&self.y);
         a.mul(&Q.z);
         b.copy(&Q.y);
         b.mul(&self.z);
-        if !a.equals(&mut b) {
+        if !a.equals(&b) {
             return false;
         }
 
@@ -171,11 +172,11 @@ impl ECP8 {
         if self.is_infinity() {
             return;
         }
-        let mut one = FP8::new_int(1);
-        if self.z.equals(&mut one) {
+        let one = FP8::new_int(1);
+        if self.z.equals(&one) {
             return;
         }
-        self.z.inverse();
+        self.z.inverse(None);
 
         self.x.mul(&self.z);
         self.x.reduce();
@@ -215,203 +216,98 @@ impl ECP8 {
 
     /* convert to byte array */
     pub fn tobytes(&self, b: &mut [u8],compress: bool) {
-        let mut t: [u8; big::MODBYTES as usize] = [0; big::MODBYTES as usize];
-        let mb = big::MODBYTES as usize;
+        const MB:usize = 8*(big::MODBYTES as usize);
+        let mut t: [u8; MB] = [0; MB];
+        let mut alt=false;
         let mut W = ECP8::new();
         W.copy(self);
         W.affine();
-        b[0]=0x06;
+        W.x.tobytes(&mut t);
 
-        W.x.geta().geta().geta().tobytes(&mut t);
-        for i in 0..mb {
-            b[i+1] = t[i]
+        if (fp::MODBITS-1)%8 <= 4 && ecp::ALLOW_ALT_COMPRESS {
+            alt=true;
         }
-        W.x.geta().geta().getb().tobytes(&mut t);
-        for i in 0..mb {
-            b[i + mb +1] = t[i]
-        }
-
-        W.x.geta().getb().geta().tobytes(&mut t);
-        for i in 0..mb {
-            b[i + 2 * mb +1] = t[i]
-        }
-        W.x.geta().getb().getb().tobytes(&mut t);
-        for i in 0..mb {
-            b[i + 3 * mb +1] = t[i]
-        }
-
-        W.x.getb().geta().geta().tobytes(&mut t);
-        for i in 0..mb {
-            b[i + 4 * mb +1] = t[i]
-        }
-        W.x.getb().geta().getb().tobytes(&mut t);
-        for i in 0..mb {
-            b[i + 5 * mb +1] = t[i]
-        }
-
-        W.x.getb().getb().geta().tobytes(&mut t);
-        for i in 0..mb {
-            b[i + 6 * mb +1] = t[i]
-        }
-        W.x.getb().getb().getb().tobytes(&mut t);
-        for i in 0..mb {
-            b[i + 7 * mb +1] = t[i]
-        }
-        if !compress {
-            b[0]=0x04;
-            W.y.geta().geta().geta().tobytes(&mut t);
-            for i in 0..mb {
-                b[i + 8 * mb +1] = t[i]
-            }
-            W.y.geta().geta().getb().tobytes(&mut t);
-            for i in 0..mb {
-                b[i + 9 * mb +1] = t[i]
+        if alt {
+		    for i in 0..MB {
+			    b[i]=t[i]
+		    }
+            if !compress {
+                W.y.tobytes(&mut t);
+                for i in 0..MB {
+				    b[i+MB]=t[i];
+			    }
+            } else {
+                b[0]|=0x80;
+                if W.y.islarger()==1 {
+				    b[0]|=0x20;
+			    }
             }
 
-            W.y.geta().getb().geta().tobytes(&mut t);
-            for i in 0..mb {
-                b[i + 10 * mb +1] = t[i]
+	    } else {
+		    for i in 0..MB {
+			    b[i+1]=t[i];
+		    }
+            if !compress {
+                b[0]=0x04;
+                W.y.tobytes(&mut t);
+	            for i in 0..MB {
+			        b[i+MB+1]=t[i];
+			    }
+            } else {
+                b[0]=0x02;
+                if W.y.sign() == 1 {
+                    b[0]=0x03;
+			    }
             }
-            W.y.geta().getb().getb().tobytes(&mut t);
-            for i in 0..mb {
-                b[i + 11 * mb +1] = t[i]
-            }
-
-            W.y.getb().geta().geta().tobytes(&mut t);
-            for i in 0..mb {
-                b[i + 12 * mb +1] = t[i]
-            }
-            W.y.getb().geta().getb().tobytes(&mut t);
-            for i in 0..mb {
-                b[i + 13 * mb +1] = t[i]
-            }
-
-            W.y.getb().getb().geta().tobytes(&mut t);
-            for i in 0..mb {
-                b[i + 14 * mb +1] = t[i]
-            }
-            W.y.getb().getb().getb().tobytes(&mut t);
-            for i in 0..mb {
-                b[i + 15 * mb +1] = t[i]
-            }
-        } else {
-            b[0]=0x02;
-            if W.y.sign() == 1 {
-                b[0]=0x03;
-            }
-        }
+	    }
     }
 
     /* convert from byte array to point */
     pub fn frombytes(b: &[u8]) -> ECP8 {
-        let mut t: [u8; big::MODBYTES as usize] = [0; big::MODBYTES as usize];
-        let mb = big::MODBYTES as usize;
+        const MB:usize = 8*(big::MODBYTES as usize);
+        let mut t: [u8; MB] = [0; MB];
         let typ=b[0] as isize;
+        let mut alt=false;
 
-        for i in 0..mb {
-            t[i] = b[i + 1]
+        if (fp::MODBITS-1)%8 <= 4 && ecp::ALLOW_ALT_COMPRESS {
+            alt=true;
         }
-        let mut ra = BIG::frombytes(&t);
-        for i in 0..mb {
-            t[i] = b[i + mb + 1]
-        }
-        let mut rb = BIG::frombytes(&t);
 
-        let mut ra4 = FP2::new_bigs(&ra, &rb);
-
-        for i in 0..mb {
-            t[i] = b[i + 2 * mb + 1]
-        }
-        ra.copy(&BIG::frombytes(&t));
-        for i in 0..mb {
-            t[i] = b[i + 3 * mb + 1]
-        }
-        rb.copy(&BIG::frombytes(&t));
-
-        let mut rb4 = FP2::new_bigs(&ra, &rb);
-
-        let mut ra8 = FP4::new_fp2s(&ra4, &rb4);
-
-        for i in 0..mb {
-            t[i] = b[i + 4 * mb + 1]
-        }
-        let mut ra = BIG::frombytes(&t);
-        for i in 0..mb {
-            t[i] = b[i + 5 * mb + 1]
-        }
-        let mut rb = BIG::frombytes(&t);
-
-        ra4.copy(&FP2::new_bigs(&ra, &rb));
-
-        for i in 0..mb {
-            t[i] = b[i + 6 * mb + 1]
-        }
-        ra.copy(&BIG::frombytes(&t));
-        for i in 0..mb {
-            t[i] = b[i + 7 * mb + 1]
-        }
-        rb.copy(&BIG::frombytes(&t));
-
-        rb4.copy(&FP2::new_bigs(&ra, &rb));
-
-        let mut rb8 = FP4::new_fp2s(&ra4, &rb4);
-
-        let rx = FP8::new_fp4s(&ra8, &rb8);
-
-        if typ==0x04 {
-            for i in 0..mb {
-                t[i] = b[i + 8 * mb + 1]
+	    if alt {
+            for i in 0..MB  {
+			    t[i]=b[i];
+		    }
+            t[0]&=0x1f;
+            let rx=FP8::frombytes(&t);
+            if (b[0]&0x80)==0 {
+                for i in 0..MB {
+				    t[i]=b[i+MB];
+			    }
+                let ry=FP8::frombytes(&t);
+                return ECP8::new_fp8s(&rx,&ry);
+            } else {
+                let sgn=(b[0]&0x20)>>5;
+                let mut P=ECP8::new_fp8(&rx,0);
+                let cmp=P.y.islarger();
+                if (sgn == 1 && cmp != 1) || (sgn == 0 && cmp == 1) {
+				    P.neg();
+			    }
+                return P;
             }
-            ra.copy(&BIG::frombytes(&t));
-            for i in 0..mb {
-                t[i] = b[i + 9 * mb + 1]
-            }
-            rb.copy(&BIG::frombytes(&t));
-
-            ra4.copy(&FP2::new_bigs(&ra, &rb));
-
-            for i in 0..mb {
-                t[i] = b[i + 10 * mb + 1]
-            }
-            ra.copy(&BIG::frombytes(&t));
-            for i in 0..mb {
-                t[i] = b[i + 11 * mb + 1]
-            }
-            rb.copy(&BIG::frombytes(&t));
-
-            rb4.copy(&FP2::new_bigs(&ra, &rb));
-
-            ra8.copy(&FP4::new_fp2s(&ra4, &rb4));
-
-            for i in 0..mb {
-                t[i] = b[i + 12 * mb + 1]
-            }
-            ra.copy(&BIG::frombytes(&t));
-            for i in 0..mb {
-                t[i] = b[i + 13 * mb + 1]
-            }
-            rb.copy(&BIG::frombytes(&t));
-
-            ra4.copy(&FP2::new_bigs(&ra, &rb));
-
-            for i in 0..mb {
-                t[i] = b[i + 14 * mb + 1]
-            }
-            ra.copy(&BIG::frombytes(&t));
-            for i in 0..mb {
-                t[i] = b[i + 15 * mb + 1]
-            }
-            rb.copy(&BIG::frombytes(&t));
-
-            rb4.copy(&FP2::new_bigs(&ra, &rb));
-
-            rb8.copy(&FP4::new_fp2s(&ra4, &rb4));
-
-            let ry = FP8::new_fp4s(&ra8, &rb8);
-
-            return ECP8::new_fp8s(&rx, &ry);
         } else {
-            return ECP8::new_fp8(&rx,typ&1);
+		    for i in 0..MB {
+			    t[i]=b[i+1];
+		    }
+            let rx=FP8::frombytes(&t);
+            if typ == 0x04 {
+		        for i in 0..MB {
+				    t[i]=b[i+MB+1];
+			    }
+		        let ry=FP8::frombytes(&t);
+		        return ECP8::new_fp8s(&rx,&ry)
+            } else {
+                return ECP8::new_fp8(&rx,typ&1)
+            }
         }
     }
 
@@ -627,7 +523,7 @@ impl ECP8 {
         if ecp::SEXTIC_TWIST == ecp::M_TYPE {
             f1.mul_ip();
             f1.norm();
-            f1.inverse();
+            f1.inverse(None);
             f0.copy(&f1);
             f0.sqr();
             f1.mul(&f0);
@@ -819,7 +715,7 @@ impl ECP8 {
     // Faz-Hernandez & Longa & Sanchez  https://eprint.iacr.org/2013/158.pdf
     // Side channel attack secure
 
-    pub fn mul16(Q: &mut [ECP8], u: &[BIG]) -> ECP8 {
+    pub fn mul16(Q: &[ECP8], u: &[BIG]) -> ECP8 {
         let mut W = ECP8::new();
         let mut P = ECP8::new();
 
@@ -903,90 +799,90 @@ impl ECP8 {
         T1[0].copy(&Q[0]);
         W.copy(&T1[0]);
         T1[1].copy(&W);
-        T1[1].add(&mut Q[1]); // Q[0]+Q[1]
+        T1[1].add(&Q[1]); // Q[0]+Q[1]
         T1[2].copy(&W);
-        T1[2].add(&mut Q[2]);
+        T1[2].add(&Q[2]);
         W.copy(&T1[1]); // Q[0]+Q[2]
         T1[3].copy(&W);
-        T1[3].add(&mut Q[2]);
+        T1[3].add(&Q[2]);
         W.copy(&T1[0]); // Q[0]+Q[1]+Q[2]
         T1[4].copy(&W);
-        T1[4].add(&mut Q[3]);
+        T1[4].add(&Q[3]);
         W.copy(&T1[1]); // Q[0]+Q[3]
         T1[5].copy(&W);
-        T1[5].add(&mut Q[3]);
+        T1[5].add(&Q[3]);
         W.copy(&T1[2]); // Q[0]+Q[1]+Q[3]
         T1[6].copy(&W);
-        T1[6].add(&mut Q[3]);
+        T1[6].add(&Q[3]);
         W.copy(&T1[3]); // Q[0]+Q[2]+Q[3]
         T1[7].copy(&W);
-        T1[7].add(&mut Q[3]); // Q[0]+Q[1]+Q[2]+Q[3]
+        T1[7].add(&Q[3]); // Q[0]+Q[1]+Q[2]+Q[3]
 
         T2[0].copy(&Q[4]);
         W.copy(&T2[0]);
         T2[1].copy(&W);
-        T2[1].add(&mut Q[5]); // Q[0]+Q[1]
+        T2[1].add(&Q[5]); // Q[0]+Q[1]
         T2[2].copy(&W);
-        T2[2].add(&mut Q[6]);
+        T2[2].add(&Q[6]);
         W.copy(&T2[1]); // Q[0]+Q[2]
         T2[3].copy(&W);
-        T2[3].add(&mut Q[6]);
+        T2[3].add(&Q[6]);
         W.copy(&T2[0]); // Q[0]+Q[1]+Q[2]
         T2[4].copy(&W);
-        T2[4].add(&mut Q[7]);
+        T2[4].add(&Q[7]);
         W.copy(&T2[1]); // Q[0]+Q[3]
         T2[5].copy(&W);
-        T2[5].add(&mut Q[7]);
+        T2[5].add(&Q[7]);
         W.copy(&T2[2]); // Q[0]+Q[1]+Q[3]
         T2[6].copy(&W);
-        T2[6].add(&mut Q[7]);
+        T2[6].add(&Q[7]);
         W.copy(&T2[3]); // Q[0]+Q[2]+Q[3]
         T2[7].copy(&W);
-        T2[7].add(&mut Q[7]); // Q[0]+Q[1]+Q[2]+Q[3]
+        T2[7].add(&Q[7]); // Q[0]+Q[1]+Q[2]+Q[3]
 
         T3[0].copy(&Q[8]);
         W.copy(&T3[0]);
         T3[1].copy(&W);
-        T3[1].add(&mut Q[9]); // Q[0]+Q[1]
+        T3[1].add(&Q[9]); // Q[0]+Q[1]
         T3[2].copy(&W);
-        T3[2].add(&mut Q[10]);
+        T3[2].add(&Q[10]);
         W.copy(&T3[1]); // Q[0]+Q[2]
         T3[3].copy(&W);
-        T3[3].add(&mut Q[10]);
+        T3[3].add(&Q[10]);
         W.copy(&T3[0]); // Q[0]+Q[1]+Q[2]
         T3[4].copy(&W);
-        T3[4].add(&mut Q[11]);
+        T3[4].add(&Q[11]);
         W.copy(&T3[1]); // Q[0]+Q[3]
         T3[5].copy(&W);
-        T3[5].add(&mut Q[11]);
+        T3[5].add(&Q[11]);
         W.copy(&T3[2]); // Q[0]+Q[1]+Q[3]
         T3[6].copy(&W);
-        T3[6].add(&mut Q[11]);
+        T3[6].add(&Q[11]);
         W.copy(&T3[3]); // Q[0]+Q[2]+Q[3]
         T3[7].copy(&W);
-        T3[7].add(&mut Q[11]); // Q[0]+Q[1]+Q[2]+Q[3]
+        T3[7].add(&Q[11]); // Q[0]+Q[1]+Q[2]+Q[3]
 
         T4[0].copy(&Q[12]);
         W.copy(&T4[0]);
         T4[1].copy(&W);
-        T4[1].add(&mut Q[13]); // Q[0]+Q[1]
+        T4[1].add(&Q[13]); // Q[0]+Q[1]
         T4[2].copy(&W);
-        T4[2].add(&mut Q[14]);
+        T4[2].add(&Q[14]);
         W.copy(&T4[1]); // Q[0]+Q[2]
         T4[3].copy(&W);
-        T4[3].add(&mut Q[14]);
+        T4[3].add(&Q[14]);
         W.copy(&T4[0]); // Q[0]+Q[1]+Q[2]
         T4[4].copy(&W);
-        T4[4].add(&mut Q[15]);
+        T4[4].add(&Q[15]);
         W.copy(&T4[1]); // Q[0]+Q[3]
         T4[5].copy(&W);
-        T4[5].add(&mut Q[15]);
+        T4[5].add(&Q[15]);
         W.copy(&T4[2]); // Q[0]+Q[1]+Q[3]
         T4[6].copy(&W);
-        T4[6].add(&mut Q[15]);
+        T4[6].add(&Q[15]);
         W.copy(&T4[3]); // Q[0]+Q[2]+Q[3]
         T4[7].copy(&W);
-        T4[7].add(&mut Q[15]); // Q[0]+Q[1]+Q[2]+Q[3]
+        T4[7].add(&Q[15]); // Q[0]+Q[1]+Q[2]+Q[3]
 
         // Make it odd
         let pb1 = 1 - t[0].parity();
@@ -1077,38 +973,38 @@ impl ECP8 {
         // Main loop
         P.selector(&T1, (2 * w1[nb - 1] + 1) as i32);
         W.selector(&T2, (2 * w2[nb - 1] + 1) as i32);
-        P.add(&mut W);
+        P.add(&W);
         W.selector(&T3, (2 * w3[nb - 1] + 1) as i32);
-        P.add(&mut W);
+        P.add(&W);
         W.selector(&T4, (2 * w4[nb - 1] + 1) as i32);
-        P.add(&mut W);
+        P.add(&W);
         for i in (0..nb - 1).rev() {
             P.dbl();
             W.selector(&T1, (2 * w1[i] + s1[i]) as i32);
-            P.add(&mut W);
+            P.add(&W);
             W.selector(&T2, (2 * w2[i] + s2[i]) as i32);
-            P.add(&mut W);
+            P.add(&W);
             W.selector(&T3, (2 * w3[i] + s3[i]) as i32);
-            P.add(&mut W);
+            P.add(&W);
             W.selector(&T4, (2 * w4[i] + s4[i]) as i32);
-            P.add(&mut W);
+            P.add(&W);
         }
 
         // apply correction
         W.copy(&P);
-        W.sub(&mut Q[0]);
+        W.sub(&Q[0]);
         P.cmove(&W, pb1);
 
         W.copy(&P);
-        W.sub(&mut Q[4]);
+        W.sub(&Q[4]);
         P.cmove(&W, pb2);
 
         W.copy(&P);
-        W.sub(&mut Q[8]);
+        W.sub(&Q[8]);
         P.cmove(&W, pb3);
 
         W.copy(&P);
-        W.sub(&mut Q[12]);
+        W.sub(&Q[12]);
         P.cmove(&W, pb4);
 
         P.affine();
@@ -1191,13 +1087,13 @@ impl ECP8 {
         let mut T=FP8::new_copy(H);
         let sgn=T.sign();
 
-        let mut Z=FP::new_int(fp::RIADZG2);
+        let mut Z=FP::new_int(fp::RIADZG2A);
         let mut X1=FP8::new_fp(&Z);
         let mut X3=FP8::new_copy(&X1);
         let mut A=ECP8::rhs(&X1);
         let mut W=FP8::new_copy(&A);
 
-        W.sqrt();
+        W.sqrt(None);
 
         let s = FP::new_big(&BIG::new_ints(&rom::SQRTM3));
         Z.mul(&s);
@@ -1209,7 +1105,7 @@ impl ECP8 {
         NY.copy(&T); NY.mul(&Y); 
         
         NY.tmul(&Z);
-        NY.inverse();
+        NY.inverse(None);
 
         W.tmul(&Z);
         if W.sign()==1 {
@@ -1229,11 +1125,11 @@ impl ECP8 {
         X3.add(&A); X3.norm();
 
         Y.copy(&ECP8::rhs(&X2));
-        X3.cmove(&X2,Y.qr());
+        X3.cmove(&X2,Y.qr(None));
         Y.copy(&ECP8::rhs(&X1));
-        X3.cmove(&X1,Y.qr());
+        X3.cmove(&X1,Y.qr(None));
         Y.copy(&ECP8::rhs(&X3));
-        Y.sqrt();
+        Y.sqrt(None);
 
         let ne=Y.sign()^sgn;
         W.copy(&Y); W.neg(); W.norm();

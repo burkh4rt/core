@@ -47,6 +47,30 @@ typedef struct
 	@return 1 if zero, else returns 0
  */
 extern int FP2_YYY_iszilch(FP2_YYY *x);
+
+/**	@brief Tests for lexically larger 
+ *
+	@param x FP2 number to be tested if larger than -x
+	@return 1 if larger, else returns 0
+ */
+extern int FP2_YYY_islarger(FP2_YYY *x);
+
+
+/**	@brief Serialize out FP2  
+ *
+    @param b buffer for output
+	@param x FP2 number to be serialized
+ */
+extern void FP2_YYY_toBytes(char *b,FP2_YYY *x);
+
+/**	@brief Serialize in FP2  
+ *
+	@param x FP2 number to be serialized
+    @param b buffer for input
+ */
+extern void FP2_YYY_fromBytes(FP2_YYY *x,char *b);
+
+
 /**	@brief Conditional copy of FP2 number
  *
 	Conditionally copies second parameter to the first (without branching)
@@ -125,6 +149,14 @@ extern void FP2_YYY_zero(FP2_YYY *x);
  */
 extern void FP2_YYY_one(FP2_YYY *x);
 
+/**	@brief Copy from ROM to an FP2
+ *
+	@param w FP2 number to be copied to
+	@param a BIG real part to be copied from ROM
+	@param b BIG imag part to be copied from ROM
+ */
+extern void FP2_YYY_rcopy(FP2_YYY *w,const BIG_XXX a,const BIG_XXX b);
+
 /**	@brief Sign of FP2
  *
 	@param x FP2 instance
@@ -200,8 +232,9 @@ extern void FP2_YYY_rawoutput(FP2_YYY *x);
  *
 	@param x FP2 instance, on exit = 1/y
 	@param y FP2 instance
+    @param h optional input hint
  */
-extern void FP2_YYY_inv(FP2_YYY *x, FP2_YYY *y);
+extern void FP2_YYY_inv(FP2_YYY *x, FP2_YYY *y, FP_YYY *h);
 /**	@brief Divide an FP2 by 2
  *
 	@param x FP2 instance, on exit = y/2
@@ -247,16 +280,18 @@ extern void FP2_YYY_pow(FP2_YYY *x, FP2_YYY *y, BIG_XXX b);
 /**	@brief Test FP2 for QR
  *
 	@param x FP2 instance
+    @param h optional generated hint
 	@return true or false
  */
-extern int FP2_YYY_qr(FP2_YYY *x);
+extern int FP2_YYY_qr(FP2_YYY *x, FP_YYY *h);
 
 /**	@brief Square root of an FP2
  *
 	@param x FP2 instance, on exit = sqrt(y)
 	@param y FP2 instance
+    @param h optional input hint
  */
-extern void FP2_YYY_sqrt(FP2_YYY *x, FP2_YYY *y);
+extern void FP2_YYY_sqrt(FP2_YYY *x, FP2_YYY *y, FP_YYY *h);
 
 /**	@brief Multiply an FP2 by sqrt(-1)
  *

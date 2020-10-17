@@ -29,7 +29,7 @@ use crate::xxx::pair4;
 use crate::xxx::rom;
 use crate::hmac;
 
-/* BLS API Functions */
+/* Boneh-Lynn-Shacham signature 192-bit API Functions */
 
 pub const BFS: usize = big::MODBYTES as usize;
 pub const BGS: usize = big::MODBYTES as usize;
@@ -64,7 +64,7 @@ fn hash_to_field(hash: usize,hlen: usize ,u: &mut [FP], dst: &[u8],m: &[u8],ctr:
 /* hash a message to an ECP point, using SHA2, random oracle method */
 #[allow(non_snake_case)]
 pub fn bls_hash_to_point(m: &[u8]) -> ECP {
-    let dst= String::from("BLS_SIG_ZZZG1_XMD:SHA384-SVDW-RO-_NUL_".to_ascii_uppercase());
+    let dst= String::from("BLS_SIG_ZZZG1_XMD:SHA-384_SVDW_RO_NUL_".to_ascii_uppercase());
     let mut u: [FP; 2] = [
         FP::new(),
         FP::new(),
@@ -115,7 +115,7 @@ pub fn key_pair_generate(ikm: &[u8], s: &mut [u8], w: &mut [u8]) -> isize {
     hmac::hkdf_expand(hmac::MC_SHA2,hlen,&mut okm,el,&prk[0 .. hlen],&len);
 
     let mut dx = DBIG::frombytes(&okm[0 .. el]);
-    let mut sc = dx.dmod(&r);
+    let sc = dx.dmod(&r);
     sc.tobytes(s);
 // SkToPk
     pair4::g2mul(&g, &sc).tobytes(w,true);  // true for public key compression

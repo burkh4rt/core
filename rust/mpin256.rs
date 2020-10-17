@@ -31,7 +31,7 @@ use crate::xxx::dbig::DBIG;
 use crate::hmac;
 use crate::rand::RAND;
 
-/* MPIN API Functions */
+/* MPIN 256-bit API Functions */
 
 /* Configure mode of operation */
 
@@ -78,7 +78,7 @@ pub fn encode_to_curve(dst: &[u8],id: &[u8],hcid: &mut [u8]) {
 /* create random secret S */
 pub fn random_generate(mut rng: &mut RAND, s: &mut [u8]) -> isize {
     let r = BIG::new_ints(&rom::CURVE_ORDER);
-    let mut sc = BIG::randtrunc(&r, 16 * ecp::AESKEY, &mut rng);
+    let sc = BIG::randtrunc(&r, 16 * ecp::AESKEY, &mut rng);
     sc.tobytes(s);
     return 0;
 }
@@ -145,7 +145,7 @@ pub fn client_1(
     xid: &mut [u8]
 ) -> isize {
     let r = BIG::new_ints(&rom::CURVE_ORDER);
-    let mut sx: BIG;
+    let sx: BIG;
 
     if let Some(rd) = rng {
         sx = BIG::randtrunc(&r, 16 * ecp::AESKEY, rd);

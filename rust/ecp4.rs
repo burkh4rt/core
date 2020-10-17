@@ -51,10 +51,10 @@ impl ECP4 {
         E.z.one();
         E.x.norm();
 
-        let mut rhs = ECP4::rhs(&E.x);
+        let rhs = ECP4::rhs(&E.x);
         let mut y2 = FP4::new_copy(&E.y);
         y2.sqr();
-        if !y2.equals(&mut rhs) {
+        if !y2.equals(&rhs) {
             E.inf();
         }
         return E;
@@ -63,14 +63,15 @@ impl ECP4 {
     /* construct this from x - but set to O if not on curve */
     pub fn new_fp4(ix: &FP4, s:isize) -> ECP4 {
         let mut E = ECP4::new();
+        let mut h = FP::new();
         E.x.copy(&ix);
         E.y.one();
         E.z.one();
         E.x.norm();
 
         let mut rhs = ECP4::rhs(&E.x);
- 	    if rhs.qr() == 1 {
-		    rhs.sqrt();
+ 	    if rhs.qr(Some(&mut h)) == 1 {
+		    rhs.sqrt(Some(&h));
 		    if rhs.sign() != s {
 			    rhs.neg();
 		    }
@@ -145,20 +146,20 @@ impl ECP4 {
     }
 
     /* Test if P == Q */
-    pub fn equals(&mut self, Q: &mut ECP4) -> bool {
+    pub fn equals(&self, Q: &ECP4) -> bool {
         let mut a = FP4::new_copy(&self.x);
         let mut b = FP4::new_copy(&Q.x);
 
         a.mul(&Q.z);
         b.mul(&self.z);
-        if !a.equals(&mut b) {
+        if !a.equals(&b) {
             return false;
         }
         a.copy(&self.y);
         a.mul(&Q.z);
         b.copy(&Q.y);
         b.mul(&self.z);
-        if !a.equals(&mut b) {
+        if !a.equals(&b) {
             return false;
         }
 
@@ -170,11 +171,11 @@ impl ECP4 {
         if self.is_infinity() {
             return;
         }
-        let mut one = FP4::new_int(1);
-        if self.z.equals(&mut one) {
+        let one = FP4::new_int(1);
+        if self.z.equals(&one) {
             return;
         }
-        self.z.inverse();
+        self.z.inverse(None);
 
         self.x.mul(&self.z);
         self.x.reduce();
@@ -214,115 +215,98 @@ impl ECP4 {
 
     /* convert to byte array */
     pub fn tobytes(&self, b: &mut [u8], compress: bool) {
-        let mut t: [u8; big::MODBYTES as usize] = [0; big::MODBYTES as usize];
-        let mb = big::MODBYTES as usize;
-
+        const MB:usize = 4*(big::MODBYTES as usize);
+        let mut t: [u8; MB] = [0; MB];
+        let mut alt=false;
         let mut W = ECP4::new();
         W.copy(self);
         W.affine();
-        b[0]=0x06;
+        W.x.tobytes(&mut t);
 
-        W.x.geta().geta().tobytes(&mut t);
-        for i in 0..mb {
-            b[i+1] = t[i]
+        if (fp::MODBITS-1)%8 <= 4 && ecp::ALLOW_ALT_COMPRESS {
+            alt=true;
         }
-        W.x.geta().getb().tobytes(&mut t);
-        for i in 0..mb {
-            b[i + mb +1] = t[i]
-        }
-
-        W.x.getb().geta().tobytes(&mut t);
-        for i in 0..mb {
-            b[i + 2 * mb +1] = t[i]
-        }
-        W.x.getb().getb().tobytes(&mut t);
-        for i in 0..mb {
-            b[i + 3 * mb +1] = t[i]
-        }
-        if !compress {
-            b[0]=0x04;
-            W.y.geta().geta().tobytes(&mut t);
-            for i in 0..mb {
-                b[i + 4 * mb +1] = t[i]
-            }
-            W.y.geta().getb().tobytes(&mut t);
-            for i in 0..mb {
-                b[i + 5 * mb +1] = t[i]
+        if alt {
+		    for i in 0..MB {
+			    b[i]=t[i]
+		    }
+            if !compress {
+                W.y.tobytes(&mut t);
+                for i in 0..MB {
+				    b[i+MB]=t[i];
+			    }
+            } else {
+                b[0]|=0x80;
+                if W.y.islarger()==1 {
+				    b[0]|=0x20;
+			    }
             }
 
-            W.y.getb().geta().tobytes(&mut t);
-            for i in 0..mb {
-                b[i + 6 * mb +1] = t[i]
+	    } else {
+		    for i in 0..MB {
+			    b[i+1]=t[i];
+		    }
+            if !compress {
+                b[0]=0x04;
+                W.y.tobytes(&mut t);
+	            for i in 0..MB {
+			        b[i+MB+1]=t[i];
+			    }
+            } else {
+                b[0]=0x02;
+                if W.y.sign() == 1 {
+                    b[0]=0x03;
+			    }
             }
-            W.y.getb().getb().tobytes(&mut t);
-            for i in 0..mb {
-                b[i + 7 * mb +1] = t[i]
-            }
-        } else {
-            b[0]=0x02;
-            if W.y.sign() == 1 {
-                b[0]=0x03;
-            }
-        }
+	    }
     }
 
     /* convert from byte array to point */
     pub fn frombytes(b: &[u8]) -> ECP4 {
-        let mut t: [u8; big::MODBYTES as usize] = [0; big::MODBYTES as usize];
-        let mb = big::MODBYTES as usize;
+        const MB:usize = 4*(big::MODBYTES as usize);
+        let mut t: [u8; MB] = [0; MB];
         let typ=b[0] as isize;
+        let mut alt=false;
 
-        for i in 0..mb {
-            t[i] = b[i + 1]
+        if (fp::MODBITS-1)%8 <= 4 && ecp::ALLOW_ALT_COMPRESS {
+            alt=true;
         }
-        let mut ra = BIG::frombytes(&t);
-        for i in 0..mb {
-            t[i] = b[i + mb + 1]
-        }
-        let mut rb = BIG::frombytes(&t);
 
-        let mut ra4 = FP2::new_bigs(&ra, &rb);
-
-        for i in 0..mb {
-            t[i] = b[i + 2 * mb + 1]
-        }
-        ra.copy(&BIG::frombytes(&t));
-        for i in 0..mb {
-            t[i] = b[i + 3 * mb + 1]
-        }
-        rb.copy(&BIG::frombytes(&t));
-
-        let mut rb4 = FP2::new_bigs(&ra, &rb);
-
-        let rx = FP4::new_fp2s(&ra4, &rb4);
-        if typ==0x04 {
-            for i in 0..mb {
-                t[i] = b[i + 4 * mb + 1]
+	    if alt {
+            for i in 0..MB  {
+			    t[i]=b[i];
+		    }
+            t[0]&=0x1f;
+            let rx=FP4::frombytes(&t);
+            if (b[0]&0x80)==0 {
+                for i in 0..MB {
+				    t[i]=b[i+MB];
+			    }
+                let ry=FP4::frombytes(&t);
+                return ECP4::new_fp4s(&rx,&ry);
+            } else {
+                let sgn=(b[0]&0x20)>>5;
+                let mut P=ECP4::new_fp4(&rx,0);
+                let cmp=P.y.islarger();
+                if (sgn == 1 && cmp != 1) || (sgn == 0 && cmp == 1) {
+				    P.neg();
+			    }
+                return P;
             }
-            ra.copy(&BIG::frombytes(&t));
-            for i in 0..mb {
-                t[i] = b[i + 5 * mb + 1]
-            }
-            rb.copy(&BIG::frombytes(&t));
-
-            ra4.copy(&FP2::new_bigs(&ra, &rb));
-
-            for i in 0..mb {
-                t[i] = b[i + 6 * mb + 1]
-            }
-            ra.copy(&BIG::frombytes(&t));
-            for i in 0..mb {
-                t[i] = b[i + 7 * mb + 1]
-            }
-            rb.copy(&BIG::frombytes(&t));
-
-            rb4.copy(&FP2::new_bigs(&ra, &rb));
-
-            let ry = FP4::new_fp2s(&ra4, &rb4);
-
-            return ECP4::new_fp4s(&rx, &ry);
         } else {
-            return ECP4::new_fp4(&rx,typ&1);
+		    for i in 0..MB {
+			    t[i]=b[i+1];
+		    }
+            let rx=FP4::frombytes(&t);
+            if typ == 0x04 {
+		        for i in 0..MB {
+				    t[i]=b[i+MB+1];
+			    }
+		        let ry=FP4::frombytes(&t);
+		        return ECP4::new_fp4s(&rx,&ry)
+            } else {
+                return ECP4::new_fp4(&rx,typ&1)
+            }
         }
     }
 
@@ -534,7 +518,7 @@ impl ECP4 {
         f1.copy(&f);
         if ecp::SEXTIC_TWIST == ecp::M_TYPE {
             f1.mul_ip();
-            f1.inverse();
+            f1.inverse(None);
             f0.copy(&f1);
             f0.sqr();
         }
@@ -681,7 +665,7 @@ impl ECP4 {
     // Faz-Hernandez & Longa & Sanchez  https://eprint.iacr.org/2013/158.pdf
     // Side channel attack secure
 
-    pub fn mul8(Q: &mut [ECP4], u: &[BIG]) -> ECP4 {
+    pub fn mul8(Q: &[ECP4], u: &[BIG]) -> ECP4 {
         let mut W = ECP4::new();
         let mut P = ECP4::new();
 
@@ -733,24 +717,24 @@ impl ECP4 {
         T1[0].copy(&Q[0]);
         W.copy(&T1[0]);
         T1[1].copy(&W);
-        T1[1].add(&mut Q[1]); // Q[0]+Q[1]
+        T1[1].add(&Q[1]); // Q[0]+Q[1]
         T1[2].copy(&W);
-        T1[2].add(&mut Q[2]);
+        T1[2].add(&Q[2]);
         W.copy(&T1[1]); // Q[0]+Q[2]
         T1[3].copy(&W);
-        T1[3].add(&mut Q[2]);
+        T1[3].add(&Q[2]);
         W.copy(&T1[0]); // Q[0]+Q[1]+Q[2]
         T1[4].copy(&W);
-        T1[4].add(&mut Q[3]);
+        T1[4].add(&Q[3]);
         W.copy(&T1[1]); // Q[0]+Q[3]
         T1[5].copy(&W);
-        T1[5].add(&mut Q[3]);
+        T1[5].add(&Q[3]);
         W.copy(&T1[2]); // Q[0]+Q[1]+Q[3]
         T1[6].copy(&W);
-        T1[6].add(&mut Q[3]);
+        T1[6].add(&Q[3]);
         W.copy(&T1[3]); // Q[0]+Q[2]+Q[3]
         T1[7].copy(&W);
-        T1[7].add(&mut Q[3]); // Q[0]+Q[1]+Q[2]+Q[3]
+        T1[7].add(&Q[3]); // Q[0]+Q[1]+Q[2]+Q[3]
 
         // Use frobenius
         let f = ECP4::frob_constants();
@@ -815,22 +799,22 @@ impl ECP4 {
         // Main loop
         P.selector(&T1, (2 * w1[nb - 1] + 1) as i32);
         W.selector(&T2, (2 * w2[nb - 1] + 1) as i32);
-        P.add(&mut W);
+        P.add(&W);
         for i in (0..nb - 1).rev() {
             P.dbl();
             W.selector(&T1, (2 * w1[i] + s1[i]) as i32);
-            P.add(&mut W);
+            P.add(&W);
             W.selector(&T2, (2 * w2[i] + s2[i]) as i32);
-            P.add(&mut W);
+            P.add(&W);
         }
 
         // apply correction
         W.copy(&P);
-        W.sub(&mut Q[0]);
+        W.sub(&Q[0]);
         P.cmove(&W, pb1);
 
         W.copy(&P);
-        W.sub(&mut Q[4]);
+        W.sub(&Q[4]);
         P.cmove(&W, pb2);
 
         P.affine();
@@ -889,13 +873,13 @@ impl ECP4 {
         let mut T=FP4::new_copy(H);
         let sgn=T.sign();
 
-        let mut Z=FP::new_int(fp::RIADZG2);
+        let mut Z=FP::new_int(fp::RIADZG2A);
         let mut X1=FP4::new_fp(&Z);
         let mut X3=FP4::new_copy(&X1);
         let mut A=ECP4::rhs(&X1);
         let mut W=FP4::new_copy(&A);
 
-        W.sqrt();
+        W.sqrt(None);
 
         let s = FP::new_big(&BIG::new_ints(&rom::SQRTM3));
         Z.mul(&s);
@@ -907,7 +891,7 @@ impl ECP4 {
         NY.copy(&T); NY.mul(&Y); 
         
         NY.qmul(&Z);
-        NY.inverse();
+        NY.inverse(None);
 
         W.qmul(&Z);
         if W.sign()==1 {
@@ -927,11 +911,11 @@ impl ECP4 {
         X3.add(&A); X3.norm();
 
         Y.copy(&ECP4::rhs(&X2));
-        X3.cmove(&X2,Y.qr());
+        X3.cmove(&X2,Y.qr(None));
         Y.copy(&ECP4::rhs(&X1));
-        X3.cmove(&X1,Y.qr());
+        X3.cmove(&X1,Y.qr(None));
         Y.copy(&ECP4::rhs(&X3));
-        Y.sqrt();
+        Y.sqrt(None);
 
         let ne=Y.sign()^sgn;
         W.copy(&Y); W.neg(); W.norm();

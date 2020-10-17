@@ -59,12 +59,15 @@ const SEXTIC_TWIST int = @ST@
 const SIGN_OF_X int = @SX@
 const ATE_BITS int = @AB@
 const G2_TABLE int = @G2@
+const HTC_ISO int = @HC@
+const HTC_ISO_G2 int = @HC2@
 
 // associated hash function and AES key size
 
 const HASH_TYPE int = @HT@
 const AESKEY int = @AK@
 
+const ALLOW_ALT_COMPRESS bool = false
 // These are manually decided policy decisions. To block any potential patent issues set to false.
 
 const USE_GLV bool = true

@@ -128,7 +128,7 @@ public final class ECP2 {
 			y.reduce();
 			return;
 		}
-		z.inverse();
+		z.inverse(null);
 
 		x.mul(z); x.reduce();               // *****
 		y.mul(z); y.reduce();
@@ -166,56 +166,77 @@ public final class ECP2 {
 /* convert to byte array */
 	public void toBytes(byte[] b, boolean compress)
 	{
-		byte[] t=new byte[CONFIG_BIG.MODBYTES];
+		byte[] t=new byte[2*CONFIG_BIG.MODBYTES];
+        boolean alt=false;
 		ECP2 W=new ECP2(this);
 		W.affine();
+		W.x.toBytes(t);
 
-		W.x.getA().toBytes(t);
-		for (int i=0;i<CONFIG_BIG.MODBYTES;i++)
-			b[i+1]=t[i];
-		W.x.getB().toBytes(t);
-		for (int i=0;i<CONFIG_BIG.MODBYTES;i++)
-			b[i+CONFIG_BIG.MODBYTES+1]=t[i];
+        if ((CONFIG_FIELD.MODBITS-1)%8<=4 && CONFIG_CURVE.ALLOW_ALT_COMPRESS) alt=true;
 
-        if (!compress)
+        if (alt)
         {
-            b[0]=0x04;
-		    W.y.getA().toBytes(t);
-		    for (int i=0;i<CONFIG_BIG.MODBYTES;i++)
-			    b[i+2*CONFIG_BIG.MODBYTES+1]=t[i];
-		    W.y.getB().toBytes(t);
-		    for (int i=0;i<CONFIG_BIG.MODBYTES;i++)
-			    b[i+3*CONFIG_BIG.MODBYTES+1]=t[i];
+		    for (int i=0;i<2*CONFIG_BIG.MODBYTES;i++) b[i]=t[i];
+            if (!compress)
+            {
+                W.y.toBytes(t);
+                for (int i=0;i<2*CONFIG_BIG.MODBYTES;i++) b[i+2*CONFIG_BIG.MODBYTES]=t[i];
+            } else {
+                b[0]|=0x80;
+                if (W.y.islarger()==1) b[0]|=0x20;
+            }
         } else {
-            b[0]=0x02;
-            if (W.y.sign() == 1)
-                b[0]=0x03;
-        }
-	}
+		    for (int i=0;i<2*CONFIG_BIG.MODBYTES;i++) b[i+1]=t[i];
+            if (!compress)
+            {
+                b[0]=0x04;
+                W.y.toBytes(t);
+		        for (int i=0;i<2*CONFIG_BIG.MODBYTES;i++)
+			        b[i+2*CONFIG_BIG.MODBYTES+1]=t[i];
+            } else {
+                b[0]=0x02;
+                if (W.y.sign() == 1)
+                    b[0]=0x03;
+            }
+	    }
+    }
 /* convert from byte array to point */
 	public static ECP2 fromBytes(byte[] b)
 	{
-		byte[] t=new byte[CONFIG_BIG.MODBYTES];
-		BIG ra;
-		BIG rb;
+		byte[] t=new byte[2*CONFIG_BIG.MODBYTES];
+        boolean alt=false;
         int typ=(int)b[0];
 
-		for (int i=0;i<CONFIG_BIG.MODBYTES;i++) t[i]=b[i+1];
-		ra=BIG.fromBytes(t);
-		for (int i=0;i<CONFIG_BIG.MODBYTES;i++) t[i]=b[i+CONFIG_BIG.MODBYTES+1];
-		rb=BIG.fromBytes(t);
-		FP2 rx=new FP2(ra,rb);
+        if ((CONFIG_FIELD.MODBITS-1)%8<=4 && CONFIG_CURVE.ALLOW_ALT_COMPRESS) alt=true;
 
-        if (typ == 0x04)
+        if (alt)
         {
-		    for (int i=0;i<CONFIG_BIG.MODBYTES;i++) t[i]=b[i+2*CONFIG_BIG.MODBYTES+1];
-		    ra=BIG.fromBytes(t);
-		    for (int i=0;i<CONFIG_BIG.MODBYTES;i++) t[i]=b[i+3*CONFIG_BIG.MODBYTES+1];
-		    rb=BIG.fromBytes(t);
-		    FP2 ry=new FP2(ra,rb);
-		    return new ECP2(rx,ry);
+            for (int i=0;i<2*CONFIG_BIG.MODBYTES;i++) t[i]=b[i];
+            t[0]&=0x1f;
+            FP2 rx=FP2.fromBytes(t);
+            if ((b[0]&0x80)==0)
+            {
+                for (int i=0;i<2*CONFIG_BIG.MODBYTES;i++) t[i]=b[i+2*CONFIG_BIG.MODBYTES];
+                FP2 ry=FP2.fromBytes(t);
+                return new ECP2(rx,ry);
+            } else {
+                int sgn=(b[0]&0x20)>>5;
+                ECP2 P=new ECP2(rx,0);
+                int cmp=P.y.islarger();
+                if ((sgn==1 && cmp!=1) || (sgn==0 && cmp==1)) P.neg();
+                return P;
+            }
         } else {
-            return new ECP2(rx,typ&1);
+		    for (int i=0;i<2*CONFIG_BIG.MODBYTES;i++) t[i]=b[i+1];
+            FP2 rx=FP2.fromBytes(t);
+            if (typ == 0x04)
+            {
+		        for (int i=0;i<2*CONFIG_BIG.MODBYTES;i++) t[i]=b[i+2*CONFIG_BIG.MODBYTES+1];
+		        FP2 ry=FP2.fromBytes(t);
+		        return new ECP2(rx,ry);
+            } else {
+                return new ECP2(rx,typ&1);
+            }
         }
 	}
 /* convert this to hex string */
@@ -269,11 +290,12 @@ public final class ECP2 {
 		x=new FP2(ix);
 		y=new FP2(1);
 		z=new FP2(1);
+        FP h=new FP();
 		x.norm();
 		FP2 rhs=RHS(x);
-		if (rhs.qr()==1)
+		if (rhs.qr(h)==1)
 		{
-            rhs.sqrt();
+            rhs.sqrt(h);
             if (rhs.sign() != s)
                 rhs.neg();
             rhs.reduce();
@@ -597,61 +619,170 @@ public final class ECP2 {
         int sgn,ne;
         FP2 NY=new FP2(1);
         FP2 T=new FP2(H);  /**/
+        ECP2 Q;
         sgn=T.sign(); /**/
 
-        FP Z=new FP(CONFIG_FIELD.RIADZG2);
-        FP2 X1=new FP2(Z);
-        FP2 A=RHS(X1);
-        FP2 W=new FP2(A);
-        if (CONFIG_FIELD.RIADZG2==-1 && CONFIG_CURVE.SEXTIC_TWIST==CONFIG_CURVE.M_TYPE && ROM.CURVE_B_I==4)
-        { // special case for BLS12381
-            W.copy(new FP2(2,1));
-        } else {
-            W.sqrt();
-        }
-        FP s=new FP(new BIG(ROM.SQRTm3));
-        Z.mul(s);
-
-        T.sqr();
-        FP2 Y=new FP2(A); Y.mul(T);
-        T.copy(NY); T.add(Y); T.norm();
-        Y.rsub(NY); Y.norm();
-        NY.copy(T); NY.mul(Y); 
-
-        NY.pmul(Z);
-        NY.inverse();
-
-        W.pmul(Z);
-        if (W.sign()==1)
+        if (CONFIG_CURVE.HTC_ISO_G2 == 0)
         {
-            W.neg();
-            W.norm();
+/* CAHCNZS
+            FP Z=new FP(CONFIG_FIELD.RIADZG2A);
+            FP2 X1=new FP2(Z);
+            FP2 A=RHS(X1);
+            FP2 W=new FP2(A);
+            if (CONFIG_FIELD.RIADZG2A==-1 && CONFIG_FIELD.RIADZG2B==0 && CONFIG_CURVE.SEXTIC_TWIST==CONFIG_CURVE.M_TYPE && ROM.CURVE_B_I==4)
+            { // special case for BLS12381
+                W.copy(new FP2(2,1));
+            } else {
+                W.sqrt(null);
+            }
+            FP s=new FP(new BIG(ROM.SQRTm3));
+            Z.mul(s);
+
+            T.sqr();
+            FP2 Y=new FP2(A); Y.mul(T);
+            T.copy(NY); T.add(Y); T.norm();
+            Y.rsub(NY); Y.norm();
+            NY.copy(T); NY.mul(Y); 
+
+            NY.pmul(Z);
+            NY.inverse(null);
+
+            W.pmul(Z);
+            if (W.sign()==1)
+            {
+                W.neg();
+                W.norm();
+            }
+            W.pmul(Z);
+            W.mul(H); W.mul(Y); W.mul(NY);
+
+            FP2 X3=new FP2(X1);
+            X1.neg(); X1.norm(); X1.div2();
+            FP2 X2=new FP2(X1);
+            X1.sub(W); X1.norm();
+            X2.add(W); X2.norm();
+            A.add(A); A.add(A); A.norm();
+            T.sqr(); T.mul(NY); T.sqr();
+            A.mul(T);
+            X3.add(A); X3.norm();
+
+            Y.copy(RHS(X2));
+            X3.cmove(X2,Y.qr(null));
+            Y.copy(RHS(X1));
+            X3.cmove(X1,Y.qr(null));
+            Y.copy(RHS(X3));
+            Y.sqrt(null);
+
+            ne=Y.sign()^sgn;
+            W.copy(Y); W.neg(); W.norm();
+            Y.cmove(W,ne);
+
+            Q=new ECP2(X3,Y);
+CAHCNZF */
+        } else {
+/* CAHCZS
+            Q=new ECP2();
+            FP2 Ad=new FP2(new BIG(ROM.CURVE_Adr),new BIG(ROM.CURVE_Adi));
+            FP2 Bd=new FP2(new BIG(ROM.CURVE_Bdr),new BIG(ROM.CURVE_Bdi)); 
+            FP2 ZZ=new FP2(CONFIG_FIELD.RIADZG2A,CONFIG_FIELD.RIADZG2B);
+            FP hint=new FP();
+
+            T.sqr();
+            T.mul(ZZ);
+            FP2 W=new FP2(T);
+            W.add(NY); W.norm();
+
+            W.mul(T);
+            FP2 D=new FP2(Ad);
+            D.mul(W);
+
+            W.add(NY); W.norm();
+            W.mul(Bd);
+            W.neg(); W.norm();
+
+            FP2 X2=new FP2(W);
+            FP2 X3=new FP2(T);
+            X3.mul(X2);
+
+            FP2 GX1=new FP2(X2); GX1.sqr();
+            FP2 D2=new FP2(D); D2.sqr();
+            W.copy(Ad); W.mul(D2); GX1.add(W); GX1.norm(); GX1.mul(X2); D2.mul(D); W.copy(Bd); W.mul(D2); GX1.add(W); GX1.norm(); // x^3+Ax+b
+
+            W.copy(GX1); W.mul(D);
+            int qr=W.qr(hint);
+            D.copy(W); D.inverse(hint);
+            D.mul(GX1);
+            X2.mul(D);
+            X3.mul(D);
+            T.mul(H);
+            D2.copy(D); D2.sqr();
+
+            D.copy(D2); D.mul(T);
+            T.copy(W); T.mul(ZZ);
+
+            FP s=new FP(new BIG(ROM.CURVE_HTPC2));
+            s.mul(hint);
+
+            X2.cmove(X3,1-qr);
+            W.cmove(T,1-qr);
+            D2.cmove(D,1-qr);
+            hint.cmove(s,1-qr);
+
+            FP2 Y=new FP2(W); Y.sqrt(hint);
+            Y.mul(D2);
+
+            ne=Y.sign()^sgn;
+            W.copy(Y); W.neg(); W.norm();
+            Y.cmove(W,ne);
+
+            int k=0;
+            int isox=CONFIG_CURVE.HTC_ISO_G2;
+            int isoy=3*(isox-1)/2;
+
+        // xnum
+            FP2 xnum=new FP2(new BIG(ROM.PCR[k]),new BIG(ROM.PCI[k])); k++;
+            for (int i=0;i<isox;i++) {
+                xnum.mul(X2);
+                xnum.add(new FP2(new BIG(ROM.PCR[k]),new BIG(ROM.PCI[k]))); k++;
+                xnum.norm();
+            }
+        //xden
+            FP2 xden=new FP2(X2);
+            xden.add(new FP2(new BIG(ROM.PCR[k]),new BIG(ROM.PCI[k]))); k++;
+            xden.norm();
+            for (int i=0;i<isox-2;i++) {
+                xden.mul(X2);
+                xden.add(new FP2(new BIG(ROM.PCR[k]),new BIG(ROM.PCI[k]))); k++;
+                xden.norm();                
+            }
+        //ynum
+            FP2 ynum=new FP2(new BIG(ROM.PCR[k]),new BIG(ROM.PCI[k])); k++;          
+            for (int i=0;i<isoy;i++) {
+                ynum.mul(X2);
+                ynum.add(new FP2(new BIG(ROM.PCR[k]),new BIG(ROM.PCI[k]))); k++;
+                ynum.norm();
+            }
+        //yden
+            FP2 yden=new FP2(X2);
+            yden.add(new FP2(new BIG(ROM.PCR[k]),new BIG(ROM.PCI[k]))); k++;
+            yden.norm(); 
+            for (int i=0;i<isoy-1;i++) {
+                yden.mul(X2);
+                yden.add(new FP2(new BIG(ROM.PCR[k]),new BIG(ROM.PCI[k]))); k++;
+                yden.norm();
+            }
+            ynum.mul(Y);
+
+            T.copy(xnum); T.mul(yden);
+            Q.x.copy(T);
+            T.copy(ynum); T.mul(xden);
+            Q.y.copy(T);
+            T.copy(xden); T.mul(yden);
+            Q.z.copy(T);
+CAHCZF */
+
         }
-        W.pmul(Z);
-        W.mul(H); W.mul(Y); W.mul(NY);
-
-        FP2 X3=new FP2(X1);
-        X1.neg(); X1.norm(); X1.div2();
-        FP2 X2=new FP2(X1);
-        X1.sub(W); X1.norm();
-        X2.add(W); X2.norm();
-        A.add(A); A.add(A); A.norm();
-        T.sqr(); T.mul(NY); T.sqr();
-        A.mul(T);
-        X3.add(A); X3.norm();
-
-        Y.copy(RHS(X2));
-        X3.cmove(X2,Y.qr());
-        Y.copy(RHS(X1));
-        X3.cmove(X1,Y.qr());
-        Y.copy(RHS(X3));
-        Y.sqrt();
-
-        ne=Y.sign()^sgn;
-        W.copy(Y); W.neg(); W.norm();
-        Y.cmove(W,ne);
-
-        return new ECP2(X3,Y);
+        return Q;
     }
 
 /* Map octet string to curve point
@@ -675,7 +806,7 @@ public final class ECP2 {
 
 		if (CONFIG_CURVE.SEXTIC_TWIST==CONFIG_CURVE.M_TYPE)
 		{
-			X.inverse();
+			X.inverse(null);
 			X.norm();
 		}
 

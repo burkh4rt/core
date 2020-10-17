@@ -62,6 +62,31 @@ int FP2_YYY_equals(FP2_YYY *x, FP2_YYY *y)
     return (FP_YYY_equals(&(x->a), &(y->a)) & FP_YYY_equals(&(x->b), &(y->b)));
 }
 
+
+// Is x lexically larger than p-x?
+// return -1 for no, 0 if x=0, 1 for yes
+int FP2_YYY_islarger(FP2_YYY *x)
+{
+    int cmp;
+    if (FP2_YYY_iszilch(x)) return 0;
+    cmp=FP_YYY_islarger(&(x->b));
+    if (cmp!=0) return cmp;
+    return FP_YYY_islarger(&(x->a));
+}
+
+void FP2_YYY_toBytes(char *b,FP2_YYY *x)
+{
+    FP_YYY_toBytes(b,&(x->b));
+    FP_YYY_toBytes(&b[MODBYTES_XXX],&(x->a));
+}
+
+void FP2_YYY_fromBytes(FP2_YYY *x,char *b)
+{
+    FP_YYY_fromBytes(&(x->b),b);
+    FP_YYY_fromBytes(&(x->a),&b[MODBYTES_XXX]);
+}
+
+
 /* Create FP2 from two FPs */
 /* SU= 16 */
 void FP2_YYY_from_FPs(FP2_YYY *w, FP_YYY *x, FP_YYY *y)
@@ -131,6 +156,12 @@ void FP2_YYY_one(FP2_YYY *w)
     FP_YYY one;
     FP_YYY_one(&one);
     FP2_YYY_from_FP(w, &one);
+}
+
+void FP2_YYY_rcopy(FP2_YYY *w,const BIG_XXX a,const BIG_XXX b)
+{
+    FP_YYY_rcopy(&(w->a),a);
+    FP_YYY_rcopy(&(w->b),b);
 }
 
 int FP2_YYY_sign(FP2_YYY *w)
@@ -300,7 +331,7 @@ void FP2_YYY_rawoutput(FP2_YYY *w)
 
 /* Set w=1/x */
 /* SU= 128 */
-void FP2_YYY_inv(FP2_YYY *w, FP2_YYY *x)
+void FP2_YYY_inv(FP2_YYY *w, FP2_YYY *x, FP_YYY *h)
 {
     BIG_XXX m, b;
     FP_YYY w1, w2;
@@ -310,7 +341,7 @@ void FP2_YYY_inv(FP2_YYY *w, FP2_YYY *x)
     FP_YYY_sqr(&w2, &(x->b));
     FP_YYY_add(&w1, &w1, &w2);
 
-    FP_YYY_inv(&w1, &w1, NULL);
+    FP_YYY_inv(&w1, &w1, h);
 
     FP_YYY_mul(&(w->a), &(x->a), &w1);
     FP_YYY_neg(&w1, &w1);
@@ -363,7 +394,7 @@ void FP2_YYY_div_ip(FP2_YYY *w)
     FP2_YYY z;
     FP2_YYY_norm(w);
     FP2_YYY_from_ints(&z, (1 << QNRI_YYY), 1);
-    FP2_YYY_inv(&z, &z);
+    FP2_YYY_inv(&z, &z, NULL);
     FP2_YYY_mul(w, &z, w);
 #if TOWER_YYY == POSITOWER
     FP2_YYY_neg(w, w);  // ***
@@ -407,22 +438,22 @@ void FP2_YYY_pow(FP2_YYY *r, FP2_YYY* a, BIG_XXX b)
 */
 /* test for x a QR */
 
-int FP2_YYY_qr(FP2_YYY *x)
+int FP2_YYY_qr(FP2_YYY *x, FP_YYY *h)
 { /* test x^(p^2-1)/2 = 1 */
     FP2_YYY c;
     FP2_YYY_conj(&c,x);
     FP2_YYY_mul(&c,&c,x);
 
-    return FP_YYY_qr(&(c.a),NULL);
+    return FP_YYY_qr(&(c.a),h);
 }
 
 /* sqrt(a+ib) = sqrt(a+sqrt(a*a-n*b*b)/2)+ib/(2*sqrt(a+sqrt(a*a-n*b*b)/2)) */
 
-void FP2_YYY_sqrt(FP2_YYY *w, FP2_YYY *u)
+void FP2_YYY_sqrt(FP2_YYY *w, FP2_YYY *u, FP_YYY *h)
 {
-    FP_YYY w1, w2, w3;
+    FP_YYY w1, w2, w3, w4, hint;
     FP2_YYY nw;
-    int sgn;
+    int sgn,qr;
 
     FP2_YYY_copy(w, u);
     if (FP2_YYY_iszilch(w)) return;
@@ -431,12 +462,56 @@ void FP2_YYY_sqrt(FP2_YYY *w, FP2_YYY *u)
     FP_YYY_sqr(&w2, &(w->a));
     FP_YYY_add(&w1, &w1, &w2);
     FP_YYY_norm(&w1);
-    FP_YYY_sqrt(&w1, &w1,NULL);
+    FP_YYY_sqrt(&w1, &w1,h);
 
     FP_YYY_add(&w2, &(w->a), &w1);
     FP_YYY_norm(&w2);
     FP_YYY_div2(&w2, &w2);
 
+    FP_YYY_div2(&w1,&(w->b));                   // w1=b/2
+    qr=FP_YYY_qr(&w2,&hint);                    // only exp!
+
+// tweak hint
+    FP_YYY_neg(&w3,&hint); FP_YYY_norm(&w3);    // QNR = -1
+    FP_YYY_neg(&w4,&w2); FP_YYY_norm(&w4);
+
+    FP_YYY_cmove(&w2,&w4,1-qr);
+    FP_YYY_cmove(&hint,&w3,1-qr);
+
+    FP_YYY_sqrt(&(w->a),&w2,&hint);             // a=sqrt(w2)
+    FP_YYY_inv(&w3,&w2,&hint);                  // w3=1/w2
+    FP_YYY_mul(&w3,&w3,&(w->a));                // w3=1/sqrt(w2)
+    FP_YYY_mul(&(w->b),&w3,&w1);                // b=(b/2)*1/sqrt(w2)
+    FP_YYY_copy(&w4,&(w->a));
+
+    FP_YYY_cmove(&(w->a),&(w->b),1-qr);
+    FP_YYY_cmove(&(w->b),&w4,1-qr);
+
+
+/*
+
+    FP_YYY_sqrt(&(w->a),&w2,&hint);             // a=sqrt(w2)
+    FP_YYY_inv(&w3,&w2,&hint);                  // w3=1/w2
+    FP_YYY_mul(&w3,&w3,&(w->a));                // w3=1/sqrt(w2)
+    FP_YYY_mul(&(w->b),&w3,&w1);                // b=(b/2)*1/sqrt(w2)
+
+// tweak hint
+    FP_YYY_neg(&hint,&hint); FP_YYY_norm(&hint);    // QNR = -1
+    FP_YYY_neg(&w2,&w2); FP_YYY_norm(&w2);
+
+    FP_YYY_sqrt(&w4,&w2,&hint);                 // w4=sqrt(w2)
+    FP_YYY_inv(&w3,&w2,&hint);                  // w3=1/w2    
+    FP_YYY_mul(&w3,&w3,&w4);                    // w3=1/sqrt(w2)
+    FP_YYY_mul(&w3,&w3,&w1);                    // w3=(b/2)*1/sqrt(w2)
+
+    FP_YYY_cmove(&(w->a),&w3,1-qr);
+    FP_YYY_cmove(&(w->b),&w4,1-qr);
+*/
+    sgn=FP2_YYY_sign(w);
+    FP2_YYY_neg(&nw,w); FP2_YYY_norm(&nw);
+    FP2_YYY_cmove(w,&nw,sgn);
+
+/*
     FP_YYY_sub(&w3, &(w->a), &w1);
     FP_YYY_norm(&w3);
     FP_YYY_div2(&w3, &w3);
@@ -446,19 +521,12 @@ void FP2_YYY_sqrt(FP2_YYY *w, FP2_YYY *u)
     FP_YYY_invsqrt(&w3,&(w->a),&w2);
     FP_YYY_mul(&w3,&w3,&(w->a));
     FP_YYY_div2(&w2,&w3);
-/*
 
-    FP_YYY_sqrt(&w2, &w2,NULL);
-    FP_YYY_copy(&(w->a), &w2);
-    FP_YYY_add(&w2, &w2, &w2);
-    FP_YYY_norm(&w2);
-    FP_YYY_inv(&w2, &w2, NULL);
-*/
     FP_YYY_mul(&(w->b), &(w->b), &w2);
 
     sgn=FP2_YYY_sign(w);
     FP2_YYY_neg(&nw,w); FP2_YYY_norm(&nw);
-    FP2_YYY_cmove(w,&nw,sgn);
+    FP2_YYY_cmove(w,&nw,sgn); */
 }
 
 /* New stuff for ECp4 support */

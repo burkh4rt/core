@@ -254,15 +254,30 @@ def curveset(nbt,tf,tc,base,m8,rz,mt,qi,ct,ca,pf,stw,sx,g2,ab,cs) :
     replace(fnameh,"@NBT@",nbt)
     replace(fnameh,"@M8@",m8)
     replace(fnameh,"@MT@",mt)
-#    replace(fnameh,"@RZ@",rz)
+    hc="0"
+    hc2="0"
+# Get Hash-to-Curve Z for G1 and G2
 
-# Get Z for G1 and G2
     if isinstance(rz,list) :
-        replace(fnameh,"@RZ@",rz[0])
-        replace(fnameh,"@RZ2@",rz[1])
+        if len(rz)==2 :     # Z followed by SSWU isogeny degree
+            replace(fnameh,"@RZ@",rz[0])
+            replace(fnameh,"@RZ2A@","0")
+            replace(fnameh,"@RZ2B@","0")
+            hc=rz[1]
+        if len(rz)==3 :     # Z for G1 followed by Z for G2 (for SVDW)
+            replace(fnameh,"@RZ@",rz[0])
+            replace(fnameh,"@RZ2A@",rz[1])
+            replace(fnameh,"@RZ2B@",rz[2])
+        if len(rz)==5 :     # Z for G1, Z for G2, SSWU isogeny degree for G1, SSWU isogeny degree for G2
+            replace(fnameh,"@RZ@",rz[0])
+            replace(fnameh,"@RZ2A@",rz[1])
+            replace(fnameh,"@RZ2B@",rz[2])
+            hc=rz[3]
+            hc2=rz[4]
     else :
-        replace(fnameh,"@RZ@",rz)
-        replace(fnameh,"@RZ2@","0")
+        replace(fnameh,"@RZ@",rz)   # just Z for SSWU, or indicates RFC7748 or Generic for Elligator
+        replace(fnameh,"@RZ2A@","0")
+        replace(fnameh,"@RZ2B@","0")
 
     itw=int(qi)%10
     replace(fnameh,"@QI@",str(itw))
@@ -294,6 +309,9 @@ def curveset(nbt,tf,tc,base,m8,rz,mt,qi,ct,ca,pf,stw,sx,g2,ab,cs) :
     replace(fnameh,"@CS@",cs)
     replace(fnameh,"@AB@",ab)
     replace(fnameh,"@G2@",g2)
+
+    replace(fnameh,"@HC@",hc) 
+    replace(fnameh,"@HC2@",hc2) 
 
     fnamec="big_"+bd+".c"
     fnamebc="big_"+bd+".bc"
@@ -689,30 +707,32 @@ print("21. X448")
 print("22. SECP160R1")
 print("23. C1174")
 print("24. C1665")
-print("25. Million Dollar Curve\n")
+print("25. Million Dollar Curve")
+print("26. TWEEDLEDUM")
+print("27. TWEEDLEDEE\n")
 
 print("Pairing-Friendly Elliptic Curves")
-print("26. BN254")
-print("27. BN254CX")
-print("28. BLS12383")
-print("29. BLS12381")
-print("30. FP256BN")
-print("31. FP512BN")
-print("32. BLS12461")
-print("33. BN462")
-print("34. BLS24479")
-print("35. BLS48556")
-print("36. BLS48581")
-print("37. BLS48286\n")
+print("28. BN254")
+print("29. BN254CX")
+print("30. BLS12383")
+print("31. BLS12381")
+print("32. FP256BN")
+print("33. FP512BN")
+print("34. BLS12461")
+print("35. BN462")
+print("36. BLS24479")
+print("37. BLS48556")
+print("38. BLS48581")
+print("39. BLS48286\n")
 
 print("RSA")
-print("38. RSA2048")
-print("39. RSA3072")
-print("40. RSA4096")
+print("40. RSA2048")
+print("41. RSA3072")
+print("42. RSA4096")
 
 selection=[]
 ptr=0
-max=41
+max=43
 
 
 curve_selected=False
@@ -804,7 +824,9 @@ while ptr<max:
         curve_selected=True
 
     if x==17:
-        curveset("256","SECP256K1","SECP256K1","28","1","1","NOT_SPECIAL","0","WEIERSTRASS","0","NOT_PF","","","","","128")
+#                                                       ,"1", for SVDW
+# set for SSWU plus isogenies
+        curveset("256","SECP256K1","SECP256K1","28","1",["-11","3"],"NOT_SPECIAL","0","WEIERSTRASS","0","NOT_PF","","","","","128")
         curve_selected=True
     if x==18:
         curveset("256","SM2","SM2","28","1","-9","NOT_SPECIAL","0","WEIERSTRASS","-3","NOT_PF","","","","","128")
@@ -838,50 +860,61 @@ while ptr<max:
         curveset("256","MDC","MDC","28","1","0","NOT_SPECIAL","0","EDWARDS","1","NOT_PF","","","","","128")
         curve_selected=True
 
-
     if x==26:
-        curveset("254","BN254","BN254","28","1",["-1","-1"],"NOT_SPECIAL","0","WEIERSTRASS","0","BN_CURVE","D_TYPE","NEGATIVEX","71","66","128")
-        pfcurve_selected=True
+        curveset("255","TWEEDLEDUM","TWEEDLEDUM","29","33","1","NOT_SPECIAL","5","WEIERSTRASS","0","NOT_PF","","","","","128")
+        curve_selected=True
+
     if x==27:
-        curveset("254","BN254CX","BN254CX","28","1",["-1","-1"],"NOT_SPECIAL","0","WEIERSTRASS","0","BN_CURVE","D_TYPE","NEGATIVEX","76","66","128")
+        curveset("255","TWEEDLEDEE","TWEEDLEDEE","29","34","1","NOT_SPECIAL","5","WEIERSTRASS","0","NOT_PF","","","","","128")
+        curve_selected=True
+
+    pf=28
+
+    if x==pf+0:
+        curveset("254","BN254","BN254","28","1",["-1","-1","0"],"NOT_SPECIAL","0","WEIERSTRASS","0","BN_CURVE","D_TYPE","NEGATIVEX","71","66","128")
         pfcurve_selected=True
-    if x==28:
-        curveset("383","BLS12383","BLS12383","29","1",["1","1"],"NOT_SPECIAL","0","WEIERSTRASS","0","BLS12_CURVE","M_TYPE","POSITIVEX","68","65","128")
+    if x==pf+1:
+        curveset("254","BN254CX","BN254CX","28","1",["-1","-1","0"],"NOT_SPECIAL","0","WEIERSTRASS","0","BN_CURVE","D_TYPE","NEGATIVEX","76","66","128")
+        pfcurve_selected=True
+    if x==pf+2:
+        curveset("383","BLS12383","BLS12383","29","1",["1","1","0"],"NOT_SPECIAL","0","WEIERSTRASS","0","BLS12_CURVE","M_TYPE","POSITIVEX","68","65","128")
         pfcurve_selected=True
 
-    if x==29:
-        curveset("381","BLS12381","BLS12381","29","1",["-3","-1"],"NOT_SPECIAL","0","WEIERSTRASS","0","BLS12_CURVE","M_TYPE","NEGATIVEX","69","65","128")
+    if x==pf+3:
+#                                                      ["-3" ,"-1", "0"]  for SVDW
+# set for SSWU plus isogenies
+        curveset("381","BLS12381","BLS12381","29","1",["11","-2","-1","11","3"],"NOT_SPECIAL","0","WEIERSTRASS","0","BLS12_CURVE","M_TYPE","NEGATIVEX","69","65","128")
         pfcurve_selected=True
 
-    if x==30:
-        curveset("256","FP256BN","FP256BN","28","1",["1","1"],"NOT_SPECIAL","0","WEIERSTRASS","0","BN_CURVE","M_TYPE","NEGATIVEX","83","66","128")
+    if x==pf+4:
+        curveset("256","FP256BN","FP256BN","28","1",["1","1","0"],"NOT_SPECIAL","0","WEIERSTRASS","0","BN_CURVE","M_TYPE","NEGATIVEX","83","66","128")
         pfcurve_selected=True
-    if x==31:
-        curveset("512","FP512BN","FP512BN","29","1",["1","1"],"NOT_SPECIAL","0","WEIERSTRASS","0","BN_CURVE","M_TYPE","POSITIVEX","172","130","128")
+    if x==pf+5:
+        curveset("512","FP512BN","FP512BN","29","1",["1","1","0"],"NOT_SPECIAL","0","WEIERSTRASS","0","BN_CURVE","M_TYPE","POSITIVEX","172","130","128")
         pfcurve_selected=True
 # https://eprint.iacr.org/2017/334.pdf
-    if x==32:
-        curveset("461","BLS12461","BLS12461","28","1",["1","4"],"NOT_SPECIAL","0","WEIERSTRASS","0","BLS12_CURVE","M_TYPE","NEGATIVEX","79","78","128")
+    if x==pf+6:
+        curveset("461","BLS12461","BLS12461","28","1",["1","4","0"],"NOT_SPECIAL","0","WEIERSTRASS","0","BLS12_CURVE","M_TYPE","NEGATIVEX","79","78","128")
         pfcurve_selected=True
 
-    if x==33:
-        curveset("462","BN462","BN462","28","1",["1","1"],"NOT_SPECIAL","1","WEIERSTRASS","0","BN_CURVE","D_TYPE","POSITIVEX","125","118","128") # was 0 M_TYPE
+    if x==pf+7:
+        curveset("462","BN462","BN462","28","1",["1","1","0"],"NOT_SPECIAL","1","WEIERSTRASS","0","BN_CURVE","D_TYPE","POSITIVEX","125","118","128") # was 0 M_TYPE
         pfcurve_selected=True
 
-    if x==34:
-        curveset("479","BLS24479","BLS24479","29","1",["1","4"],"NOT_SPECIAL","0","WEIERSTRASS","0","BLS24_CURVE","M_TYPE","POSITIVEX","52","49","192")
+    if x==pf+8:
+        curveset("479","BLS24479","BLS24479","29","1",["1","4","0"],"NOT_SPECIAL","0","WEIERSTRASS","0","BLS24_CURVE","M_TYPE","POSITIVEX","52","49","192")
         pfcurve_selected=True
 
-    if x==35:
-        curveset("556","BLS48556","BLS48556","29","1",["-1","2"],"NOT_SPECIAL","0","WEIERSTRASS","0","BLS48_CURVE","M_TYPE","POSITIVEX","35","32","256")
+    if x==pf+9:
+        curveset("556","BLS48556","BLS48556","29","1",["-1","2","0"],"NOT_SPECIAL","0","WEIERSTRASS","0","BLS48_CURVE","M_TYPE","POSITIVEX","35","32","256")
         pfcurve_selected=True
 
-    if x==36:
-        curveset("581","BLS48581","BLS48581","29","1",["2","2"],"NOT_SPECIAL","10","WEIERSTRASS","0","BLS48_CURVE","D_TYPE","NEGATIVEX","36","33","256")
+    if x==pf+10:
+        curveset("581","BLS48581","BLS48581","29","1",["2","2","0"],"NOT_SPECIAL","10","WEIERSTRASS","0","BLS48_CURVE","D_TYPE","NEGATIVEX","36","33","256")
         pfcurve_selected=True
 
-    if x==37:
-        curveset("286","BLS48286","BLS48286","29","1",["1","1"],"NOT_SPECIAL","0","WEIERSTRASS","0","BLS48_CURVE","M_TYPE","POSITIVEX","20","17","128")
+    if x==pf+11:
+        curveset("286","BLS48286","BLS48286","29","1",["1","1","0"],"NOT_SPECIAL","0","WEIERSTRASS","0","BLS48_CURVE","M_TYPE","POSITIVEX","20","17","128")
         pfcurve_selected=True
 
 
@@ -893,17 +926,17 @@ while ptr<max:
 # multiplier is 2^m (see above)
 
 # There are choices here, different ways of getting the same result, but some faster than others
-    if x==38:
+    if x==pf+12:
         #256 is slower but may allow reuse of 256-bit BIGs used for elliptic curve
         #512 is faster.. but best is 1024
         rsaset("1024","2048","28","2")
         #rsaset("512","2048","29","4")
         #rsaset("256","2048","29","8")
         rsa_selected=True
-    if x==39:
+    if x==pf+13:
         rsaset("384","3072","28","8")
         rsa_selected=True
-    if x==40:
+    if x==pf+14:
         #rsaset("256","4096","29","16")
         rsaset("512","4096","29","8")
         rsa_selected=True
@@ -959,6 +992,7 @@ os.system("emcc -O2 -c share.c -o share.bc")
 os.system("emcc -O2 -c aes.c -o aes.bc")
 os.system("emcc -O2 -c gcm.c -o gcm.bc")
 os.system("emcc -O2 -c newhope.c -o newhope.bc")
+os.system("emcc -O2 -c x509.c -o x509.bc")
 
 if sys.platform.startswith("win") :
     os.system("for %i in (*.bc) do @echo %~nxi >> f.list")

@@ -121,7 +121,8 @@ public struct ECP2 {
             x.reduce(); y.reduce()
             return
         }
-        z.inverse()
+        let pNIL:FP?=nil
+        z.inverse(pNIL)
 
         x.mul(z); x.reduce()
         y.mul(z); y.reduce()
@@ -159,54 +160,97 @@ public struct ECP2 {
     /* convert to byte array */
     func toBytes(_ b:inout [UInt8],_ compress: Bool)
     {
-        let RM=Int(CONFIG_BIG.MODBYTES)
+        let RM=2*Int(CONFIG_BIG.MODBYTES)
         var t=[UInt8](repeating: 0,count: RM)
+        var alt=false
         var W=ECP2(); W.copy(self)
         W.affine()
+	    W.x.toBytes(&t)
 
-        W.x.getA().toBytes(&t)
-        for i in 0 ..< RM
-            {b[i+1]=t[i]}
-        W.x.getB().toBytes(&t);
-        for i in 0 ..< RM
-            {b[i+RM+1]=t[i]}
-        if !compress {
-            b[0]=0x04
-            W.y.getA().toBytes(&t);
-            for i in 0 ..< RM
-                {b[i+2*RM+1]=t[i]}
-            W.y.getB().toBytes(&t);
-            for i in 0 ..< RM
-                {b[i+3*RM+1]=t[i]}
-        } else {
-            b[0]=0x02
-            if W.y.sign() == 1 {
-                b[0]=0x03;
-            }
+        if (CONFIG_FIELD.MODBITS-1)%8 <= 4 && CONFIG_CURVE.ALLOW_ALT_COMPRESS {
+            alt=true
         }
+        if alt {
+		    for i in 0 ..< RM {
+			    b[i]=t[i]
+		    }
+            if !compress {
+                W.y.toBytes(&t);
+                for i in 0 ..< RM {
+				    b[i+RM]=t[i]
+			    }
+            } else {
+                b[0]|=0x80
+                if W.y.islarger()==1 {
+				    b[0]|=0x20
+			    }
+            }
+
+	    } else {
+		    for i in 0 ..< RM {
+			    b[i+1]=t[i]
+		    }
+            if !compress {
+                b[0]=0x04
+                W.y.toBytes(&t)
+	            for i in 0 ..< RM {
+			        b[i+RM+1]=t[i]
+			    }
+            } else {
+                b[0]=0x02
+                if W.y.sign() == 1 {
+                    b[0]=0x03
+			    }
+            }
+	    }
     }
     /* convert from byte array to point */
     static func fromBytes(_ b:[UInt8]) -> ECP2
     {
-        let RM=Int(CONFIG_BIG.MODBYTES)
+        let RM=2*Int(CONFIG_BIG.MODBYTES)
         var t=[UInt8](repeating: 0,count: RM)
+        var alt=false
         let typ = Int(b[0])
 
-        for i in 0 ..< RM {t[i]=b[i+1]}
-        var ra=BIG.fromBytes(t);
-        for i in 0 ..< RM {t[i]=b[i+RM+1]}
-        var rb=BIG.fromBytes(t);
-        let rx=FP2(ra,rb)
-        if typ == 0x04 {
-            for i in 0 ..< RM {t[i]=b[i+2*RM+1]}
-            ra=BIG.fromBytes(t)
-            for i in 0 ..< RM {t[i]=b[i+3*RM+1]}
-            rb=BIG.fromBytes(t)
-            let ry=FP2(ra,rb)
+        if (CONFIG_FIELD.MODBITS-1)%8 <= 4 && CONFIG_CURVE.ALLOW_ALT_COMPRESS {
+            alt=true
+        }
 
-            return ECP2(rx,ry)
+	    if alt {
+            for i in 0 ..< RM  {
+			    t[i]=b[i]
+		    }
+            t[0]&=0x1f
+            let rx=FP2.fromBytes(t)
+            if (b[0]&0x80)==0 {
+                for i in 0 ..< RM {
+				    t[i]=b[i+RM]
+			    }
+                let ry=FP2.fromBytes(t)
+                return ECP2(rx,ry)
+            } else {
+                let sgn=(b[0]&0x20)>>5
+                var P=ECP2(rx,0)
+                let cmp=P.y.islarger()
+                if (sgn == 1 && cmp != 1) || (sgn == 0 && cmp == 1) {
+				    P.neg()
+			    }
+                return P;
+            }
         } else {
-            return ECP2(rx,typ&1)
+		    for i in 0 ..< RM {
+			    t[i]=b[i+1]
+		    }
+            let rx=FP2.fromBytes(t)
+            if typ == 0x04 {
+		        for i in 0 ..< RM {
+				    t[i]=b[i+RM+1]
+			    }
+		        let ry=FP2.fromBytes(t)
+		        return ECP2(rx,ry)
+            } else {
+                return ECP2(rx,typ&1)
+            }
         }
     }
 /* convert self to hex string */
@@ -256,10 +300,11 @@ public struct ECP2 {
         x=FP2(ix)
         y=FP2(1)
         z=FP2(1)
+        var hint:FP?=FP()
         x.norm()
         var rhs=ECP2.RHS(x)
- 	    if rhs.qr() == 1 {
-		    rhs.sqrt()
+ 	    if rhs.qr(&hint) == 1 {
+		    rhs.sqrt(hint)
 		    if rhs.sign() != s {
 			    rhs.neg()
 		    }
@@ -483,7 +528,8 @@ public struct ECP2 {
         let Frb=BIG(ROM.Frb)
         var X=FP2(Fra,Frb)
         if CONFIG_CURVE.SEXTIC_TWIST == CONFIG_CURVE.M_TYPE {
-            X.inverse()
+            let pNIL:FP?=nil
+            X.inverse(pNIL)
             X.norm()
         }
         let x=BIG(ROM.CURVE_Bnx)
@@ -630,62 +676,172 @@ public struct ECP2 {
 /* Constant time Map to Point */
     static public func map2point(_ H:FP2) -> ECP2
     { // Shallue and van de Woestijne
-        var NY=FP2(1)
+        var Q:ECP2
         var T=FP2(H) /**/
         let sgn=T.sign() /**/
+        if CONFIG_CURVE.HTC_ISO_G2 == 0 {
+/* CAHCNZS
+            var pNIL:FP?=nil
+            var NY=FP2(1)
+            var Z=FP(CONFIG_FIELD.RIADZG2A)
+            var X1=FP2(Z)
+            var X3=FP2(X1)
+            var A=ECP2.RHS(X1)
+            var W=FP2(A)
+            if (CONFIG_FIELD.RIADZG2A == -1 && CONFIG_FIELD.RIADZG2B == 0 && CONFIG_CURVE.SEXTIC_TWIST == CONFIG_CURVE.M_TYPE && ROM.CURVE_B_I == 4)
+            { // special case for BLS12381
+                W.copy(FP2(2,1))
+            } else {
+                W.sqrt(pNIL)
+            }
+            let s=FP(BIG(ROM.SQRTm3))
+            Z.mul(s)
 
-        var Z=FP(CONFIG_FIELD.RIADZG2)
-        var X1=FP2(Z)
-        var X3=FP2(X1)
-        var A=ECP2.RHS(X1)
-        var W=FP2(A)
-        if (CONFIG_FIELD.RIADZG2 == -1 && CONFIG_CURVE.SEXTIC_TWIST == CONFIG_CURVE.M_TYPE && ROM.CURVE_B_I == 4)
-        { // special case for BLS12381
-            W.copy(FP2(2,1))
-        } else {
-            W.sqrt()
-        }
-        let s=FP(BIG(ROM.SQRTm3))
-        Z.mul(s)
-
-        T.sqr()
-        var Y=FP2(A); Y.mul(T)
-        T.copy(NY); T.add(Y); T.norm()
-        Y.rsub(NY); Y.norm()
-        NY.copy(T); NY.mul(Y)
+            T.sqr()
+            var Y=FP2(A); Y.mul(T)
+            T.copy(NY); T.add(Y); T.norm()
+            Y.rsub(NY); Y.norm()
+            NY.copy(T); NY.mul(Y)
         
-        NY.pmul(Z)
-        NY.inverse()
+            NY.pmul(Z)
+            NY.inverse(pNIL)
 
-        W.pmul(Z)
-        if W.sign()==1 {
-            W.neg()
-            W.norm()
+            W.pmul(Z)
+            if W.sign()==1 {
+                W.neg()
+                W.norm()
+            }
+            W.pmul(Z)
+            W.mul(H); W.mul(Y); W.mul(NY)
+
+            X1.neg(); X1.norm(); X1.div2()
+            var X2=FP2(X1)
+            X1.sub(W); X1.norm()
+            X2.add(W); X2.norm()
+            A.add(A); A.add(A); A.norm()
+            T.sqr(); T.mul(NY); T.sqr()
+            A.mul(T)
+            X3.add(A); X3.norm()
+
+            Y.copy(ECP2.RHS(X2))
+            X3.cmove(X2,Y.qr(&pNIL))
+            Y.copy(ECP2.RHS(X1))
+            X3.cmove(X1,Y.qr(&pNIL))
+            Y.copy(ECP2.RHS(X3))
+            Y.sqrt(pNIL)
+
+            let ne=Y.sign()^sgn
+            W.copy(Y); W.neg(); W.norm()
+            Y.cmove(W,ne)
+
+            Q=ECP2(X3,Y)
+            return Q
+CAHCNZF */
+        } else {
+
+/* CAHCZS
+            let NY=FP2(1)
+            Q=ECP2()
+            let Ad=FP2(BIG(ROM.CURVE_Adr),BIG(ROM.CURVE_Adi))
+            let Bd=FP2(BIG(ROM.CURVE_Bdr),BIG(ROM.CURVE_Bdi))
+            let ZZ=FP2(CONFIG_FIELD.RIADZG2A,CONFIG_FIELD.RIADZG2B)
+            var hint:FP?=FP()
+
+            T.sqr()
+            T.mul(ZZ)
+            var W=FP2(T)
+            W.add(NY); W.norm()
+
+            W.mul(T)
+            var D=FP2(Ad)
+            D.mul(W)
+
+            W.add(NY); W.norm()
+            W.mul(Bd)
+            W.neg(); W.norm()
+
+            var X2=FP2(W)
+            var X3=FP2(T)
+            X3.mul(X2)
+
+            var GX1=FP2(X2); GX1.sqr()
+            var D2=FP2(D); D2.sqr()
+
+            W.copy(Ad); W.mul(D2); GX1.add(W); GX1.norm(); GX1.mul(X2); D2.mul(D); W.copy(Bd); W.mul(D2); GX1.add(W); GX1.norm() // x^3+Ax+b
+
+            W.copy(GX1); W.mul(D)
+            let qr=W.qr(&hint)
+            D.copy(W); D.inverse(hint)
+            D.mul(GX1)
+            X2.mul(D)
+            X3.mul(D)
+            T.mul(H)
+            D2.copy(D); D2.sqr()
+
+            D.copy(D2); D.mul(T)
+            T.copy(W); T.mul(ZZ)
+
+            var s=FP(BIG(ROM.CURVE_HTPC2))
+            s.mul(hint!);
+
+            X2.cmove(X3,1-qr)
+            W.cmove(T,1-qr)
+            D2.cmove(D,1-qr)
+            hint!.cmove(s,1-qr)
+
+            var Y=FP2(W); Y.sqrt(hint)
+            Y.mul(D2)
+
+            let ne=Y.sign()^sgn
+            W.copy(Y); W.neg(); W.norm()
+            Y.cmove(W,ne)
+
+            var k=0
+            let isox=CONFIG_CURVE.HTC_ISO_G2
+            let isoy=3*(isox-1)/2
+        //xnum
+            var xnum=FP2(BIG(ROM.PCR[k]),BIG(ROM.PCI[k])); k+=1
+            for _ in 0..<isox {
+                xnum.mul(X2)
+                xnum.add(FP2(BIG(ROM.PCR[k]),BIG(ROM.PCI[k]))); k+=1
+                xnum.norm()
+            }
+        //xden
+            var xden=FP2(X2)
+            xden.add(FP2(BIG(ROM.PCR[k]),BIG(ROM.PCI[k]))); k+=1
+            xden.norm()
+            for _ in 0..<isox-2 {
+                xden.mul(X2)
+                xden.add(FP2(BIG(ROM.PCR[k]),BIG(ROM.PCI[k]))); k+=1
+                xden.norm()
+            }
+        //ynum
+            var ynum=FP2(BIG(ROM.PCR[k]),BIG(ROM.PCI[k])); k+=1
+            for _ in 0..<isoy {
+                ynum.mul(X2)
+                ynum.add(FP2(BIG(ROM.PCR[k]),BIG(ROM.PCI[k]))); k+=1
+                ynum.norm()
+            }
+        //yden
+            var yden=FP2(X2)
+            yden.add(FP2(BIG(ROM.PCR[k]),BIG(ROM.PCI[k]))); k+=1
+            yden.norm()
+            for _ in 0..<isoy-1 {
+                yden.mul(X2)
+                yden.add(FP2(BIG(ROM.PCR[k]),BIG(ROM.PCI[k]))); k+=1
+                yden.norm()
+            }
+            ynum.mul(Y)
+            T.copy(xnum); T.mul(yden)
+            Q.x.copy(T)
+            T.copy(ynum); T.mul(xden)
+            Q.y.copy(T)
+            T.copy(xden); T.mul(yden)
+            Q.z.copy(T)
+            return Q
+CAHCZF */
         }
-        W.pmul(Z)
-        W.mul(H); W.mul(Y); W.mul(NY)
-
-        X1.neg(); X1.norm(); X1.div2()
-        var X2=FP2(X1)
-        X1.sub(W); X1.norm()
-        X2.add(W); X2.norm()
-        A.add(A); A.add(A); A.norm()
-        T.sqr(); T.mul(NY); T.sqr()
-        A.mul(T)
-        X3.add(A); X3.norm()
-
-        Y.copy(ECP2.RHS(X2))
-        X3.cmove(X2,Y.qr())
-        Y.copy(ECP2.RHS(X1))
-        X3.cmove(X1,Y.qr())
-        Y.copy(ECP2.RHS(X3))
-        Y.sqrt()
-
-        let ne=Y.sign()^sgn
-        W.copy(Y); W.neg(); W.norm()
-        Y.cmove(W,ne)
-
-        return ECP2(X3,Y)
+        return ECP2()
     }
 
 /* Map byte array to point */

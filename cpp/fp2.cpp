@@ -69,6 +69,29 @@ int YYY::FP2_equals(FP2 *x, FP2 *y)
     return (FP_equals(&(x->a), &(y->a)) & FP_equals(&(x->b), &(y->b)));
 }
 
+// Is x lexically larger than p-x?
+// return -1 for no, 0 if x=0, 1 for yes
+int YYY::FP2_islarger(FP2 *x)
+{
+    int cmp;
+    if (FP2_iszilch(x)) return 0;
+    cmp=FP_islarger(&(x->b));
+    if (cmp!=0) return cmp;
+    return FP_islarger(&(x->a));
+}
+
+void YYY::FP2_toBytes(char *b,FP2 *x)
+{
+    FP_toBytes(b,&(x->b));
+    FP_toBytes(&b[MODBYTES_XXX],&(x->a));
+}
+
+void YYY::FP2_fromBytes(FP2 *x,char *b)
+{
+    FP_fromBytes(&(x->b),b);
+    FP_fromBytes(&(x->a),&b[MODBYTES_XXX]);
+}
+
 /* Create FP2 from two FPs */
 /* SU= 16 */
 void YYY::FP2_from_FPs(FP2 *w, FP *x, FP *y)
@@ -92,10 +115,6 @@ void YYY::FP2_from_ints(FP2 *w, int xa, int xb)
     FP_from_int(&a,xa);
     FP_from_int(&b,xb);
     FP2_from_FPs(w,&a,&b);
-    //BIG a, b;
-    //BIG_zero(a); BIG_inc(a, xa); BIG_norm(a);
-    //BIG_zero(b); BIG_inc(b, xb); BIG_norm(b);
-    //FP2_from_BIGs(w, a, b);
 }
 
 /* Create FP2 from FP */
@@ -138,6 +157,12 @@ void YYY::FP2_one(FP2 *w)
     FP one;
     FP_one(&one);
     FP2_from_FP(w, &one);
+}
+
+void YYY::FP2_rcopy(FP2 *w,const BIG a,const BIG b)
+{
+    FP_rcopy(&(w->a),a);
+    FP_rcopy(&(w->b),b);
 }
 
 int YYY::FP2_sign(FP2 *w)
@@ -306,7 +331,7 @@ void YYY::FP2_rawoutput(FP2 *w)
 
 /* Set w=1/x */
 /* SU= 128 */
-void YYY::FP2_inv(FP2 *w, FP2 *x)
+void YYY::FP2_inv(FP2 *w, FP2 *x, FP *h)
 {
     FP w1, w2;
 
@@ -314,7 +339,7 @@ void YYY::FP2_inv(FP2 *w, FP2 *x)
     FP_sqr(&w1, &(x->a));
     FP_sqr(&w2, &(x->b));
     FP_add(&w1, &w1, &w2);
-    FP_inv(&w1, &w1, NULL);
+    FP_inv(&w1, &w1, h);
     FP_mul(&(w->a), &(x->a), &w1);
     FP_neg(&w1, &w1);
     FP_norm(&w1);
@@ -377,7 +402,7 @@ void YYY::FP2_div_ip(FP2 *w)
     FP2 z;
     FP2_norm(w);
     FP2_from_ints(&z, (1 << QNRI_YYY), 1);
-    FP2_inv(&z, &z);
+    FP2_inv(&z, &z, NULL);
     FP2_mul(w, &z, w);
 #if TOWER_YYY == POSITOWER
     FP2_neg(w, w);  // ***
@@ -420,54 +445,76 @@ void YYY::FP2_pow(FP2 *r, FP2* a, BIG b)
 } */
 
 /* test for x a QR */
-int YYY::FP2_qr(FP2 *x)
+int YYY::FP2_qr(FP2 *x,FP *h)
 { /* test x^(p^2-1)/2 = 1 */
 
     FP2 c;
     FP2_conj(&c,x);
     FP2_mul(&c,&c,x);
 
-    return FP_qr(&(c.a),NULL);
+    return FP_qr(&(c.a),h);
 }
 
-/* sqrt(a+ib) = sqrt(a+sqrt(a*a-n*b*b)/2)+ib/(2*sqrt(a+sqrt(a*a-n*b*b)/2)) */
+/* sqrt(a+ib) = sqrt(a+sqrt(a*a-n*b*b))/2+ib/(2*sqrt(a+sqrt(a*a-n*b*b))/2) */
 
-void YYY::FP2_sqrt(FP2 *w, FP2 *u)
+void YYY::FP2_sqrt(FP2 *w, FP2 *u, FP *h)
 {
-    FP w1, w2, w3;
+    FP w1, w2, w3, w4, hint;
     FP2 nw;
-    int sgn;
+    int sgn,qr;
     FP2_copy(w, u);
     if (FP2_iszilch(w)) return;
 
-    FP_sqr(&w1, &(w->b));
-    FP_sqr(&w2, &(w->a));
-    FP_add(&w1, &w1, &w2); FP_norm(&w1);
+    FP_sqr(&w1, &(w->b));  // b^2
+    FP_sqr(&w2, &(w->a));  // a^2
+    FP_add(&w1, &w1, &w2); FP_norm(&w1);  // a^2+b^2
 
-    FP_sqrt(&w1, &w1, NULL);
+    FP_sqrt(&w1, &w1, h);              // sqrt(a^2+b^2)  - could use an input hint to avoid exp!
 
-    FP_add(&w2, &(w->a), &w1);
+    FP_add(&w2, &(w->a), &w1);            // a+sqrt(a^2+b^2)
     FP_norm(&w2);
-    FP_div2(&w2, &w2);
+    FP_div2(&w2, &w2);                    // w2=(a+sqrt(a^2+b^2))/2
+// **
+    FP_div2(&w1,&(w->b));                   // w1=b/2
+    qr=FP_qr(&w2,&hint);                    // only exp!
 
-    FP_sub(&w3, &(w->a), &w1);
-    FP_norm(&w3);
-    FP_div2(&w3, &w3);    
+// tweak hint
+    FP_neg(&w3,&hint); FP_norm(&w3);    // QNR = -1
+    FP_neg(&w4,&w2); FP_norm(&w4);
 
-    FP_cmove(&w2,&w3,FP_qr(&w3,NULL)); // one or the other will be a QR
+    FP_cmove(&w2,&w4,1-qr);
+    FP_cmove(&hint,&w3,1-qr);
 
-    FP_invsqrt(&w3,&(w->a),&w2);
-    FP_mul(&w3,&w3,&(w->a));
-    FP_div2(&w2,&w3);
+    FP_sqrt(&(w->a),&w2,&hint);             // a=sqrt(w2)
+    FP_inv(&w3,&w2,&hint);                  // w3=1/w2
+    FP_mul(&w3,&w3,&(w->a));                // w3=1/sqrt(w2)
+    FP_mul(&(w->b),&w3,&w1);                // b=(b/2)*1/sqrt(w2)
+    FP_copy(&w4,&(w->a));
+
+    FP_cmove(&(w->a),&(w->b),1-qr);
+    FP_cmove(&(w->b),&w4,1-qr);
+
+
 /*
-    FP_sqrt(&w2, &w2, NULL);
-    FP_copy(&(w->a), &w2);
-    FP_add(&w2, &w2, &w2);
-    FP_norm(&w2);
-    FP_inv(&w2, &w2, NULL);
-*/
-    FP_mul(&(w->b), &(w->b), &w2);
 
+    FP_sqrt(&(w->a),&w2,&hint);             // a=sqrt(w2)
+    FP_inv(&w3,&w2,&hint);                  // w3=1/w2
+    FP_mul(&w3,&w3,&(w->a));                // w3=1/sqrt(w2)
+    FP_mul(&(w->b),&w3,&w1);                // b=(b/2)*1/sqrt(w2)
+
+// tweak hint
+    FP_neg(&hint,&hint); FP_norm(&hint);    // QNR = -1
+    FP_neg(&w2,&w2); FP_norm(&w2);
+
+    FP_sqrt(&w4,&w2,&hint);                 // w4=sqrt(w2)
+    FP_inv(&w3,&w2,&hint);                  // w3=1/w2    
+    FP_mul(&w3,&w3,&w4);                    // w3=1/sqrt(w2)
+    FP_mul(&w3,&w3,&w1);                    // w3=(b/2)*1/sqrt(w2)
+
+    FP_cmove(&(w->a),&w3,1-qr);
+    FP_cmove(&(w->b),&w4,1-qr);
+*/
+// return +ve root
     sgn=FP2_sign(w);
     FP2_neg(&nw,w); FP2_norm(&nw);
     FP2_cmove(w,&nw,sgn);

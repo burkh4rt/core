@@ -224,6 +224,28 @@ public struct FP {
         return z.x.iszilch()
     }
 
+    func islarger() -> Int
+    {
+        if iszilch() {
+            return 0
+        }
+        var sx=BIG(ROM.Modulus)
+        let fx=redc()
+        sx.sub(fx); sx.norm()
+        return BIG.comp(fx,sx)
+    }
+
+    func toBytes(_ b:inout [UInt8]) 
+    {
+        redc().toBytes(&b)
+    }
+
+    static func fromBytes(_ b: [UInt8]) -> FP
+    {
+        let t=BIG.fromBytes(b)
+        return FP(t)
+    }
+
 /* test this=0? */
     func isunity() -> Bool
     {
@@ -654,6 +676,8 @@ public struct FP {
         return qres
     }
 
+// Two for the price of One  - See Hamburg https://eprint.iacr.org/2012/309.pdf
+// Calculate inverse of i and square root of s, return QR
     @discardableResult static func tpo(_ i:inout FP,_ s:inout FP) -> Int
     {
         var w = FP(s)

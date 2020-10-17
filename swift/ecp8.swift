@@ -123,7 +123,8 @@ public struct ECP8 {
             x.reduce(); y.reduce()
             return
         }
-        z.inverse()
+        let pNIL:FP?=nil
+        z.inverse(pNIL)
 
         x.mul(z); x.reduce()
         y.mul(z); y.reduce()
@@ -163,156 +164,98 @@ public struct ECP8 {
     /* convert to byte array */
     func toBytes(_ b:inout [UInt8],_ compress: Bool)
     {
-        let RM=Int(CONFIG_BIG.MODBYTES)
+        let RM=8*Int(CONFIG_BIG.MODBYTES)
         var t=[UInt8](repeating: 0,count: RM)
+        var alt=false
         var W=ECP8(); W.copy(self)
         W.affine()
-        b[0]=0x06
+	    W.x.toBytes(&t)
 
-        W.x.geta().geta().getA().toBytes(&t)
-        for i in 0 ..< RM
-            {b[i+1]=t[i]}
-        W.x.geta().geta().getB().toBytes(&t);
-        for i in 0 ..< RM
-            {b[i+RM+1]=t[i]}
-
-        W.x.geta().getb().getA().toBytes(&t)
-        for i in 0 ..< RM
-            {b[i+2*RM+1]=t[i]}
-        W.x.geta().getb().getB().toBytes(&t);
-        for i in 0 ..< RM
-            {b[i+3*RM+1]=t[i]}
-
-        W.x.getb().geta().getA().toBytes(&t)
-        for i in 0 ..< RM
-            {b[i+4*RM+1]=t[i]}
-        W.x.getb().geta().getB().toBytes(&t);
-        for i in 0 ..< RM
-            {b[i+5*RM+1]=t[i]}
-
-        W.x.getb().getb().getA().toBytes(&t)
-        for i in 0 ..< RM
-            {b[i+6*RM+1]=t[i]}
-        W.x.getb().getb().getB().toBytes(&t);
-        for i in 0 ..< RM
-            {b[i+7*RM+1]=t[i]}
-
-        if !compress {
-            b[0]=0x04
-            W.y.geta().geta().getA().toBytes(&t);
-            for i in 0 ..< RM
-                {b[i+8*RM+1]=t[i]}
-            W.y.geta().geta().getB().toBytes(&t);
-            for i in 0 ..< RM
-                {b[i+9*RM+1]=t[i]}
-
-            W.y.geta().getb().getA().toBytes(&t);
-            for i in 0 ..< RM
-                {b[i+10*RM+1]=t[i]}
-            W.y.geta().getb().getB().toBytes(&t);
-            for i in 0 ..< RM
-                {b[i+11*RM+1]=t[i]}
-
-            W.y.getb().geta().getA().toBytes(&t);
-            for i in 0 ..< RM
-                {b[i+12*RM+1]=t[i]}
-            W.y.getb().geta().getB().toBytes(&t);
-            for i in 0 ..< RM
-                {b[i+13*RM+1]=t[i]}
-
-            W.y.getb().getb().getA().toBytes(&t);
-            for i in 0 ..< RM
-                {b[i+14*RM+1]=t[i]}
-            W.y.getb().getb().getB().toBytes(&t);
-            for i in 0 ..< RM
-                {b[i+15*RM+1]=t[i]}
-         } else {
-            b[0]=0x02
-            if W.y.sign() == 1 {
-                b[0]=0x03;
-            }
+        if (CONFIG_FIELD.MODBITS-1)%8 <= 4 && CONFIG_CURVE.ALLOW_ALT_COMPRESS {
+            alt=true
         }
+        if alt {
+		    for i in 0 ..< RM {
+			    b[i]=t[i]
+		    }
+            if !compress {
+                W.y.toBytes(&t);
+                for i in 0 ..< RM {
+				    b[i+RM]=t[i]
+			    }
+            } else {
+                b[0]|=0x80
+                if W.y.islarger()==1 {
+				    b[0]|=0x20
+			    }
+            }
+
+	    } else {
+		    for i in 0 ..< RM {
+			    b[i+1]=t[i]
+		    }
+            if !compress {
+                b[0]=0x04
+                W.y.toBytes(&t)
+	            for i in 0 ..< RM {
+			        b[i+RM+1]=t[i]
+			    }
+            } else {
+                b[0]=0x02
+                if W.y.sign() == 1 {
+                    b[0]=0x03
+			    }
+            }
+	    }
     }
 
     /* convert from byte array to point */
     static func fromBytes(_ b:[UInt8]) -> ECP8
     {
-        let RM=Int(CONFIG_BIG.MODBYTES)
+        let RM=8*Int(CONFIG_BIG.MODBYTES)
         var t=[UInt8](repeating: 0,count: RM)
+        var alt=false
         let typ = Int(b[0])
 
-        for i in 0 ..< RM {t[i]=b[i+1]}
-        var ra=BIG.fromBytes(t);
-        for i in 0 ..< RM {t[i]=b[i+RM+1]}
-        var rb=BIG.fromBytes(t);
+        if (CONFIG_FIELD.MODBITS-1)%8 <= 4 && CONFIG_CURVE.ALLOW_ALT_COMPRESS {
+            alt=true
+        }
 
-        var ra2=FP2(ra,rb)
-
-        for i in 0 ..< RM {t[i]=b[i+2*RM+1]}
-        ra.copy(BIG.fromBytes(t));
-        for i in 0 ..< RM {t[i]=b[i+3*RM+1]}
-        rb.copy(BIG.fromBytes(t));
-
-        var rb2=FP2(ra,rb)
-
-        var ra4=FP4(ra2,rb2)
-
-        for i in 0 ..< RM {t[i]=b[i+4*RM+1]}
-        ra.copy(BIG.fromBytes(t))
-        for i in 0 ..< RM {t[i]=b[i+5*RM+1]}
-        rb.copy(BIG.fromBytes(t))
-
-        ra2.copy(FP2(ra,rb))
-
-        for i in 0 ..< RM {t[i]=b[i+6*RM+1]}
-        ra.copy(BIG.fromBytes(t));
-        for i in 0 ..< RM {t[i]=b[i+7*RM+1]}
-        rb.copy(BIG.fromBytes(t));
-
-        rb2.copy(FP2(ra,rb))
-
-        var rb4=FP4(ra2,rb2)
-
-        let rx=FP8(ra4,rb4)
-
-        if typ == 0x04 {
-            for i in 0 ..< RM {t[i]=b[i+8*RM+1]}
-            ra.copy(BIG.fromBytes(t))
-            for i in 0 ..< RM {t[i]=b[i+9*RM+1]}
-            rb.copy(BIG.fromBytes(t))
-
-            ra2.copy(FP2(ra,rb))
-
-            for i in 0 ..< RM {t[i]=b[i+10*RM+1]}
-            ra.copy(BIG.fromBytes(t))
-            for i in 0 ..< RM {t[i]=b[i+11*RM+1]}
-            rb.copy(BIG.fromBytes(t))
-
-            rb2.copy(FP2(ra,rb))
-
-            ra4.copy(FP4(ra2,rb2))
-
-            for i in 0 ..< RM {t[i]=b[i+12*RM+1]}
-            ra.copy(BIG.fromBytes(t))
-            for i in 0 ..< RM {t[i]=b[i+13*RM+1]}
-            rb.copy(BIG.fromBytes(t))
-
-            ra2.copy(FP2(ra,rb))
-
-            for i in 0 ..< RM {t[i]=b[i+14*RM+1]}
-            ra.copy(BIG.fromBytes(t))
-            for i in 0 ..< RM {t[i]=b[i+15*RM+1]}
-            rb.copy(BIG.fromBytes(t))
-
-            rb2.copy(FP2(ra,rb))
-
-            rb4.copy(FP4(ra2,rb2))
-
-            let ry=FP8(ra4,rb4)
-
-            return ECP8(rx,ry)
+	    if alt {
+            for i in 0 ..< RM  {
+			    t[i]=b[i]
+		    }
+            t[0]&=0x1f
+            let rx=FP8.fromBytes(t)
+            if (b[0]&0x80)==0 {
+                for i in 0 ..< RM {
+				    t[i]=b[i+RM]
+			    }
+                let ry=FP8.fromBytes(t)
+                return ECP8(rx,ry)
+            } else {
+                let sgn=(b[0]&0x20)>>5
+                var P=ECP8(rx,0)
+                let cmp=P.y.islarger()
+                if (sgn == 1 && cmp != 1) || (sgn == 0 && cmp == 1) {
+				    P.neg()
+			    }
+                return P;
+            }
         } else {
-            return ECP8(rx,typ&1)
+		    for i in 0 ..< RM {
+			    t[i]=b[i+1]
+		    }
+            let rx=FP8.fromBytes(t)
+            if typ == 0x04 {
+		        for i in 0 ..< RM {
+				    t[i]=b[i+RM+1]
+			    }
+		        let ry=FP8.fromBytes(t)
+		        return ECP8(rx,ry)
+            } else {
+                return ECP8(rx,typ&1)
+            }
         }
     }
 
@@ -363,9 +306,10 @@ public struct ECP8 {
         x=FP8(ix)
         y=FP8(1)
         z=FP8(1)
+        var hint:FP?=FP()
         var rhs=ECP8.RHS(x)
- 	    if rhs.qr() == 1 {
-		    rhs.sqrt()
+ 	    if rhs.qr(&hint) == 1 {
+		    rhs.sqrt(hint)
 		    if rhs.sign() != s {
 			    rhs.neg()
 		    }
@@ -520,8 +464,9 @@ public struct ECP8 {
 
         f1.copy(X)
         if CONFIG_CURVE.SEXTIC_TWIST == CONFIG_CURVE.M_TYPE {
+            let pNIL:FP?=nil
             f1.mul_ip();  f1.norm()
-            f1.inverse()
+            f1.inverse(pNIL)
             f0.copy(f1); f0.sqr()
 
             f1.mul(f0)
@@ -923,13 +868,13 @@ public struct ECP8 {
         var NY=FP8(1)
         var T=FP8(H)
         let sgn=T.sign()
-
-        var Z=FP(CONFIG_FIELD.RIADZG2)
+        var pNIL:FP?=nil
+        var Z=FP(CONFIG_FIELD.RIADZG2A)
         var X1=FP8(Z)
         var X3=FP8(X1)
         var A=ECP8.RHS(X1)
         var W=FP8(A)
-        W.sqrt()
+        W.sqrt(pNIL)
 
         let s=FP(BIG(ROM.SQRTm3))
         Z.mul(s)
@@ -941,7 +886,7 @@ public struct ECP8 {
         NY.copy(T); NY.mul(Y)
         
         NY.tmul(Z)
-        NY.inverse()
+        NY.inverse(pNIL)
 
         W.tmul(Z)
         if W.sign()==1 {
@@ -961,11 +906,11 @@ public struct ECP8 {
         X3.add(A); X3.norm()
 
         Y.copy(ECP8.RHS(X2))
-        X3.cmove(X2,Y.qr())
+        X3.cmove(X2,Y.qr(&pNIL))
         Y.copy(ECP8.RHS(X1))
-        X3.cmove(X1,Y.qr())
+        X3.cmove(X1,Y.qr(&pNIL))
         Y.copy(ECP8.RHS(X3))
-        Y.sqrt()
+        Y.sqrt(pNIL)
 
         let ne=Y.sign()^sgn
         W.copy(Y); W.neg(); W.norm()

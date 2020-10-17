@@ -225,6 +225,23 @@ public final class FP {
         return z.x.iszilch();
     }
 
+    public int islarger() {
+        if (iszilch()) return 0;
+        BIG sx = new BIG(ROM.Modulus);
+        BIG fx=redc();
+        sx.sub(fx); sx.norm();
+        return BIG.comp(fx,sx);
+    }
+
+    public void toBytes(byte[] b) {
+        redc().toBytes(b);
+    }
+
+    public static FP fromBytes(byte[] b) {
+        BIG t=BIG.fromBytes(b);
+        return new FP(t);
+    }
+
     /* copy from FP b */
     public void copy(FP b) {
         x.copy(b.x);
@@ -663,7 +680,7 @@ public final class FP {
         return qr;
     }
 
-// Two for Price of One
+// Two for Price of One  - See Hamburg https://eprint.iacr.org/2012/309.pdf
 // Calculate inverse of i and square root of s, return QR
     public static int tpo(FP i, FP s)
     {

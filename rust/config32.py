@@ -108,13 +108,34 @@ def curveset(tc,base,nbt,m8,rz,mt,qi,ct,ca,pf,stw,sx,g2,ab,cs) :
         replace(fpath+"ecp.rs","CAISZS","*/")
         replace(fpath+"ecp.rs","CAISZF","/*")
 
-# Get Z for G1 and G2
+    hc="0"
+    hc2="0"
+# Get Hash-to-Curve Z for G1 and G2
+
     if isinstance(rz,list) :
-        replace(fpath+"fp.rs","@RZ@",rz[0])
-        replace(fpath+"fp.rs","@RZ2@",rz[1])
+        if len(rz)==2 :     # Z followed by SSWU isogeny degree
+            replace(fpath+"fp.rs","@RZ@",rz[0])
+            replace(fpath+"fp.rs","@RZ2A@","0")
+            replace(fpath+"fp.rs","@RZ2B@","0")
+            hc=rz[1]
+        if len(rz)==3 :     # Z for G1 followed by Z for G2 (for SVDW)
+            replace(fpath+"fp.rs","@RZ@",rz[0])
+            replace(fpath+"fp.rs","@RZ2A@",rz[1])
+            replace(fpath+"fp.rs","@RZ2B@",rz[2])
+        if len(rz)==5 :     # Z for G1, Z for G2, SSWU isogeny degree for G1, SSWU isogeny degree for G2
+            replace(fpath+"fp.rs","@RZ@",rz[0])
+            replace(fpath+"fp.rs","@RZ2A@",rz[1])
+            replace(fpath+"fp.rs","@RZ2B@",rz[2])
+            hc=rz[3]
+            hc2=rz[4]
     else :
-        replace(fpath+"fp.rs","@RZ@",rz)
-        replace(fpath+"fp.rs","@RZ2@","0")
+        replace(fpath+"fp.rs","@RZ@",rz)   # just Z for SSWU, or indicates RFC7748 or Generic for Elligator
+        replace(fpath+"fp.rs","@RZ2A@","0")
+        replace(fpath+"fp.rs","@RZ2B@","0")
+
+    if hc!="0" :
+        replace(fpath+"ecp.rs","CAHCZS","*/")
+        replace(fpath+"ecp.rs","CAHCZF","/*")
 
     itw=int(qi)%10
     replace(fpath+"fp.rs","@QI@",str(itw))
@@ -142,6 +163,9 @@ def curveset(tc,base,nbt,m8,rz,mt,qi,ct,ca,pf,stw,sx,g2,ab,cs) :
     replace(fpath+"ecp.rs","@AB@",ab)
     replace(fpath+"ecp.rs","@G2@",g2)
 
+    replace(fpath+"ecp.rs","@HC@",hc) 
+    replace(fpath+"ecp.rs","@HC2@",hc2) 
+
     if cs == "128" :
         replace(fpath+"ecp.rs","@HT@","32")
         replace(fpath+"ecp.rs","@AK@","16")
@@ -160,11 +184,19 @@ def curveset(tc,base,nbt,m8,rz,mt,qi,ct,ca,pf,stw,sx,g2,ab,cs) :
         replace(fpath+"fp4.rs","xxx",tc)
 
         if pf == "BN" or pf == "BLS12" :
+
             os.system(copytext+"ecp2.rs "+fpath+"ecp2.rs")
             os.system(copytext+"fp12.rs "+fpath+"fp12.rs")
             os.system(copytext+"pair.rs "+fpath+"pair.rs")
             os.system(copytext+"mpin.rs "+fpath+"mpin.rs")
             os.system(copytext+"bls.rs "+fpath+"bls.rs")
+
+            if hc2!="0" :
+                replace(fpath+"ecp2.rs","CAHCZS","*/")
+                replace(fpath+"ecp2.rs","CAHCZF","/*")
+            else :
+                replace(fpath+"ecp2.rs","CAHCNZS","*/")
+                replace(fpath+"ecp2.rs","CAHCNZF","/*")
 
             replace(fpath+"fp12.rs","xxx",tc)
             replace(fpath+"ecp2.rs","xxx",tc)
@@ -187,6 +219,8 @@ def curveset(tc,base,nbt,m8,rz,mt,qi,ct,ca,pf,stw,sx,g2,ab,cs) :
             os.system(copytext+"mpin192.rs "+fpath+"mpin192.rs")
             os.system(copytext+"bls192.rs "+fpath+"bls192.rs")
 
+            replace(fpath+"fp4.rs","PFGE24S","*/")
+            replace(fpath+"fp4.rs","PFGE24F","/*")
             replace(fpath+"fp8.rs","xxx",tc)
             replace(fpath+"fp24.rs","xxx",tc)
             replace(fpath+"ecp4.rs","xxx",tc)
@@ -205,6 +239,10 @@ def curveset(tc,base,nbt,m8,rz,mt,qi,ct,ca,pf,stw,sx,g2,ab,cs) :
             os.system(copytext+"mpin256.rs "+fpath+"mpin256.rs")
             os.system(copytext+"bls256.rs "+fpath+"bls256.rs")
 
+            replace(fpath+"fp4.rs","PFGE24S","*/")
+            replace(fpath+"fp4.rs","PFGE24F","/*")
+            replace(fpath+"fp8.rs","PFGE48S","*/")
+            replace(fpath+"fp8.rs","PFGE48F","/*")
             replace(fpath+"fp8.rs","xxx",tc)
             replace(fpath+"fp16.rs","xxx",tc)
             replace(fpath+"fp48.rs","xxx",tc)
@@ -276,30 +314,32 @@ if __name__ == '__main__':
     print("22. secp160r1")
     print("23. c1174")
     print("24. c1665")
-    print("25. Million Dollar Curve\n")
+    print("25. Million Dollar Curve")
+    print("26. tweedledum")
+    print("27. tweedledee\n")
 
     print("Pairing-Friendly Elliptic Curves")
-    print("26. bn254")
-    print("27. bn254CX")
-    print("28. bls12383")
-    print("29. bls12381")
-    print("30. fp256BN")
-    print("31. fp512BN")
-    print("32. bls12461")
-    print("33. bn462")
-    print("34. bls24479")
-    print("35. bls48556")
-    print("36. bls48581")
-    print("37. bls48286\n")
+    print("28. bn254")
+    print("29. bn254CX")
+    print("30. bls12383")
+    print("31. bls12381")
+    print("32. fp256BN")
+    print("33. fp512BN")
+    print("34. bls12461")
+    print("35. bn462")
+    print("36. bls24479")
+    print("37. bls48556")
+    print("38. bls48581")
+    print("39. bls48286\n")
 
     print("RSA")
-    print("38. rsa2048")
-    print("39. rsa3072")
-    print("40. rsa4096")
+    print("40. rsa2048")
+    print("41. rsa3072")
+    print("42. rsa4096")
 
     selection=set()
     ptr=0
-    max=41
+    max=43
 
     curve_selected=False
     pfcurve_selected=False
@@ -320,7 +360,7 @@ if __name__ == '__main__':
         selection.add(x)
         ptr=ptr+1
 
-        # curveset(curve,bits_in_base,modulus_bits,modulus_mod_8,Z,modulus_type,curve_type,pairing_friendly,g2_table size,ate_bits,curve security)
+        # curveset(curve,bits_in_base,modulus_bits,modulus_mod_8,Z,modulus_type,curve_type,Curve A,pairing_friendly,g2_table size,ate_bits,curve security)
         # where "curve" is the common name for the elliptic curve
         # bits_in_base gives the number base used for 32 bit architectures, as n where the base is 2^n
         # modulus_bits is the actual bit length of the modulus.
@@ -388,7 +428,9 @@ if __name__ == '__main__':
             curve_selected=True
 
         if x==17:
-            curveset("secp256k1","28","256","1","1","NOT_SPECIAL","0","WEIERSTRASS","0","NOT","NOT","NOT","NOT","NOT","128")
+#                                              ,"1", for SVDW
+# set for SSWU plus isogenies
+            curveset("secp256k1","28","256","1",["-11","3"],"NOT_SPECIAL","0","WEIERSTRASS","0","NOT","NOT","NOT","NOT","NOT","128")
             curve_selected=True
         if x==18:
             curveset("sm2","28","256","1","-9","NOT_SPECIAL","0","WEIERSTRASS","-3","NOT","NOT","NOT","NOT","NOT","128")
@@ -421,50 +463,61 @@ if __name__ == '__main__':
             curveset("mdc","28","256","1","0","NOT_SPECIAL","0","EDWARDS","1","NOT","NOT","NOT","NOT","NOT","128")
             curve_selected=True
 
-
         if x==26:
-            curveset("bn254","28","254","1",["-1","-1"],"NOT_SPECIAL","0","WEIERSTRASS","0","BN","D_TYPE","NEGATIVEX","71","66","128")
-            pfcurve_selected=True
+            curveset("tweedledum","29","255","33","1","NOT_SPECIAL","5","WEIERSTRASS","0","NOT","NOT","NOT","NOT","NOT","128")
+            curve_selected=True
+
         if x==27:
-            curveset("bn254CX","28","254","1",["-1","-1"],"NOT_SPECIAL","0","WEIERSTRASS","0","BN","D_TYPE","NEGATIVEX","76","66","128")
+            curveset("tweedledee","29","255","34","1","NOT_SPECIAL","5","WEIERSTRASS","0","NOT","NOT","NOT","NOT","NOT","128")
+            curve_selected=True
+
+        pf=28
+
+        if x==pf+0:
+            curveset("bn254","28","254","1",["-1","-1","0"],"NOT_SPECIAL","0","WEIERSTRASS","0","BN","D_TYPE","NEGATIVEX","71","66","128")
             pfcurve_selected=True
-        if x==28:
-            curveset("bls12383","29","383","1",["1","1"],"NOT_SPECIAL","0","WEIERSTRASS","0","BLS12","M_TYPE","POSITIVEX","68","65","128")
+        if x==pf+1:
+            curveset("bn254CX","28","254","1",["-1","-1","0"],"NOT_SPECIAL","0","WEIERSTRASS","0","BN","D_TYPE","NEGATIVEX","76","66","128")
+            pfcurve_selected=True
+        if x==pf+2:
+            curveset("bls12383","29","383","1",["1","1","0"],"NOT_SPECIAL","0","WEIERSTRASS","0","BLS12","M_TYPE","POSITIVEX","68","65","128")
             pfcurve_selected=True
 
-        if x==29:
-            curveset("bls12381","29","381","1",["-3","-1"],"NOT_SPECIAL","0","WEIERSTRASS","0","BLS12","M_TYPE","NEGATIVEX","69","65","128")
+        if x==pf+3:
+#                                              ["-3" ,"-1", "0"]  for SVDW
+# set for SSWU plus isogenies
+            curveset("bls12381","29","381","1",["11","-2","-1","11","3"],"NOT_SPECIAL","0","WEIERSTRASS","0","BLS12","M_TYPE","NEGATIVEX","69","65","128")
             pfcurve_selected=True
 
-        if x==30:
-            curveset("fp256bn","28","256","1",["1","1"],"NOT_SPECIAL","0","WEIERSTRASS","0","BN","M_TYPE","NEGATIVEX","83","66","128")
+        if x==pf+4:
+            curveset("fp256bn","28","256","1",["1","1","0"],"NOT_SPECIAL","0","WEIERSTRASS","0","BN","M_TYPE","NEGATIVEX","83","66","128")
             pfcurve_selected=True
-        if x==31:
-            curveset("fp512bn","29","512","1",["1","1"],"NOT_SPECIAL","0","WEIERSTRASS","0","BN","M_TYPE","POSITIVEX","172","130","128")
+        if x==pf+5:
+            curveset("fp512bn","29","512","1",["1","1","0"],"NOT_SPECIAL","0","WEIERSTRASS","0","BN","M_TYPE","POSITIVEX","172","130","128")
             pfcurve_selected=True
     # https://eprint.iacr.org/2017/334.pdf
-        if x==32:
-            curveset("bls12461","28","461","1",["1","4"],"NOT_SPECIAL","0","WEIERSTRASS","0","BLS12","M_TYPE","NEGATIVEX","79","78","128")
+        if x==pf+6:
+            curveset("bls12461","28","461","1",["1","4","0"],"NOT_SPECIAL","0","WEIERSTRASS","0","BLS12","M_TYPE","NEGATIVEX","79","78","128")
             pfcurve_selected=True
 
-        if x==33:
-            curveset("bn462","28","462","1",["1","1"],"NOT_SPECIAL","1","WEIERSTRASS","0","BN","D_TYPE","POSITIVEX","125","118","128")
+        if x==pf+7:
+            curveset("bn462","28","462","1",["1","1","0"],"NOT_SPECIAL","1","WEIERSTRASS","0","BN","D_TYPE","POSITIVEX","125","118","128")
             pfcurve_selected=True
 
-        if x==34:
-            curveset("bls24479","29","479","1",["1","4"],"NOT_SPECIAL","0","WEIERSTRASS","0","BLS24","M_TYPE","POSITIVEX","52","49","192")
+        if x==pf+8:
+            curveset("bls24479","29","479","1",["1","4","0"],"NOT_SPECIAL","0","WEIERSTRASS","0","BLS24","M_TYPE","POSITIVEX","52","49","192")
             pfcurve_selected=True
 
-        if x==35:
-            curveset("bls48556","29","556","1",["-1","2"],"NOT_SPECIAL","0","WEIERSTRASS","0","BLS48","M_TYPE","POSITIVEX","35","32","256")
+        if x==pf+9:
+            curveset("bls48556","29","556","1",["-1","2","0"],"NOT_SPECIAL","0","WEIERSTRASS","0","BLS48","M_TYPE","POSITIVEX","35","32","256")
             pfcurve_selected=True
 
-        if x==36:
-            curveset("bls48581","29","581","1",["2","2"],"NOT_SPECIAL","10","WEIERSTRASS","0","BLS48","D_TYPE","NEGATIVEX","36","33","256")
+        if x==pf+10:
+            curveset("bls48581","29","581","1",["2","2","0"],"NOT_SPECIAL","10","WEIERSTRASS","0","BLS48","D_TYPE","NEGATIVEX","36","33","256")
             pfcurve_selected=True
 
-        if x==37:
-            curveset("bls48286","29","286","1",["1","1"],"NOT_SPECIAL","0","WEIERSTRASS","0","BLS48","M_TYPE","POSITIVEX","20","17","128")
+        if x==pf+11:
+            curveset("bls48286","29","286","1",["1","1","0"],"NOT_SPECIAL","0","WEIERSTRASS","0","BLS48","M_TYPE","POSITIVEX","20","17","128")
             pfcurve_selected=True
 
 
@@ -473,17 +526,17 @@ if __name__ == '__main__':
     # of the underlying big length
 
     # There are choices here, different ways of getting the same result, but some faster than others
-        if x==38:
+        if x==pf+12:
             #256 is slower but may allow reuse of 256-bit BIGs used for elliptic curve
             #512 is faster.. but best is 1024
             rsaset("rsa2048","128","28","2")
             #rsaset("RSA2048","64","29","4")
             #rsaset("RSA2048","32","29","8")
             rsa_selected=True
-        if x==39:
+        if x==pf+13:
             rsaset("rsa3072","48","28","8")
             rsa_selected=True
-        if x==40:
+        if x==pf+14:
             #rsaset("RSA4096","32","29","16")
             rsaset("rsa4096","64","29","8")
             rsa_selected=True

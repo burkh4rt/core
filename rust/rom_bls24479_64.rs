@@ -80,6 +80,8 @@ pub const FRB: [Chunk; NLEN] = [
     0xB555A18CDE6D5E,
     0x99F78BE,
 ];
+pub const TWK:[Chunk;NLEN]=[0xA58920B6EA62F3,0xCB389C5F3D7CD4,0xECDF776BCA61B9,0x12DE6A6D51F59E,0x9A319AFF154D8B,0xCEE3E70FBE1BC,0x62935E18EE4423,0xECF3B411A07AAB,0x337A3266];
+
 
 pub const CURVE_COF_I: isize = 0;
 pub const CURVE_B_I: isize = 19;
@@ -117,7 +119,7 @@ pub const CURVE_GY: [Chunk; NLEN] = [
     0x6C53E477B861CA,
     0x47FCB70C,
 ];
-
+pub const CURVE_HTPC:[Chunk;NLEN]=[0x1,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0];
 pub const CURVE_BNX: [Chunk; NLEN] = [0x100020011FF80, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0];
 pub const CURVE_COF: [Chunk; NLEN] = [
     0x100020011FF7F,

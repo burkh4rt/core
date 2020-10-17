@@ -44,6 +44,35 @@ public final class FP4 {
 		return (a.iszilch() && b.iszilch());
 	}
 
+    public int islarger() {
+        if (iszilch()) return 0;
+        int cmp=b.islarger();
+        if (cmp!=0) return cmp;
+        return a.islarger();
+    }
+
+    public void toBytes(byte[] bf) {
+		byte[] t=new byte[2*CONFIG_BIG.MODBYTES];
+        b.toBytes(t);
+		for (int i=0;i<2*CONFIG_BIG.MODBYTES;i++)
+            bf[i]=t[i];
+        a.toBytes(t);
+		for (int i=0;i<2*CONFIG_BIG.MODBYTES;i++)
+            bf[i+2*CONFIG_BIG.MODBYTES]=t[i];
+    }
+
+    public static FP4 fromBytes(byte[] bf) {
+		byte[] t=new byte[2*CONFIG_BIG.MODBYTES];
+		for (int i=0;i<2*CONFIG_BIG.MODBYTES;i++)
+            t[i]=bf[i];
+        FP2 tb=FP2.fromBytes(t);
+		for (int i=0;i<2*CONFIG_BIG.MODBYTES;i++)
+            t[i]=bf[i+2*CONFIG_BIG.MODBYTES];
+        FP2 ta=FP2.fromBytes(t);
+        return new FP4(ta,tb);
+    }
+
+
 	public void cmove(FP4 g,int d)
 	{
 		a.cmove(g.a,d);
@@ -305,7 +334,7 @@ public final class FP4 {
 	}
 
 /* this=1/this */
-	public void inverse()
+	public void inverse(FP h)
 	{
 		FP2 t1=new FP2(a);
 		FP2 t2=new FP2(b);
@@ -316,7 +345,7 @@ public final class FP4 {
 		t2.norm();
 		t1.sub(t2);
 
-		t1.inverse();
+		t1.inverse(h);
 		a.mul(t1);
 		t1.neg();
 		t1.norm();
@@ -604,6 +633,14 @@ public final class FP4 {
 			norm();
 		}
 	}
+
+/* this*=s where s is FP */
+	public void qmul(FP s)
+	{
+		a.pmul(s);
+		b.pmul(s);
+	}
+
 /*
     public void pow(BIG b)
     {
@@ -622,24 +659,28 @@ public final class FP4 {
         copy(r);
     }
 */
-    public int qr()
+
+/* PFGE24S
+
+    public int qr(FP h)
     {
         FP4 c = new FP4(this);
         c.conj();
         c.mul(this);
-        return c.geta().qr();
+        return c.geta().qr(h);
     }
 
 
-/* sqrt(a+ib) = sqrt(a+sqrt(a*a-n*b*b)/2)+ib/(2*sqrt(a+sqrt(a*a-n*b*b)/2)) */
-/* returns true if this is QR */
-	public void sqrt()
+// sqrt(a+ib) = sqrt(a+sqrt(a*a-n*b*b)/2)+ib/(2*sqrt(a+sqrt(a*a-n*b*b)/2)) 
+// returns true if this is QR 
+	public void sqrt(FP h)
 	{
 		if (iszilch()) return;
 		FP2 wa=new FP2(a);
 		FP2 wb=new FP2(a);
 		FP2 ws=new FP2(b);
 		FP2 wt=new FP2(a);
+        FP hint=new FP();
 		
 		ws.sqr();
 		wa.sqr();
@@ -648,24 +689,32 @@ public final class FP4 {
 		wa.sub(ws);
 
 		ws.copy(wa); ws.norm();
-        ws.sqrt();
+        ws.sqrt(h);
 
 		wa.copy(wt); wa.add(ws); 
         wa.norm(); wa.div2();
 
-		wb.copy(wt); wb.sub(ws); 
-        wb.norm(); wb.div2();
+        wb.copy(b); wb.div2();
+        int qr=wa.qr(hint);
 
-        wa.cmove(wb,wb.qr());
-        wa.sqrt();
 
-		wt.copy(b);
-		ws.copy(wa); ws.add(wa); ws.norm();
-		ws.inverse();
+// tweak hint - multiply old hint by Norm(1/Beta)^e where Beta is irreducible polynomial
+        ws.copy(wa);
+        FP twk=new FP(new BIG(ROM.TWK));
+        twk.mul(hint);
+        ws.div_ip(); ws.norm();
 
-		wt.mul(ws);
-		a.copy(wa);
-		b.copy(wt);
+        wa.cmove(ws,1-qr);
+        hint.cmove(twk,1-qr);
+
+        a.copy(wa); a.sqrt(hint);
+        ws.copy(wa); ws.inverse(hint);
+        ws.mul(a);
+        b.copy(ws); b.mul(wb);
+        wt.copy(a);
+
+        a.cmove(b,1-qr);
+        b.cmove(wt,1-qr);
 
         int sgn=this.sign();
         FP4 nr=new FP4(this);
@@ -673,11 +722,6 @@ public final class FP4 {
         this.cmove(nr,sgn);
 	}
 
-/* this*=s where s is FP */
-	public void qmul(FP s)
-	{
-		a.pmul(s);
-		b.pmul(s);
-	}
+PFGE24F */
 
 }

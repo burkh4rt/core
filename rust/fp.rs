@@ -43,7 +43,8 @@ pub const POSITOWER: usize = 1;
 pub const MODBITS:usize = @NBT@; /* Number of bits in Modulus */
 pub const PM1D2: usize = @M8@;  /* Modulus mod 8 */
 pub const RIADZ: isize = @RZ@;  /* Z for hash-to-point */
-pub const RIADZG2: isize = @RZ2@;  /* G2 Z for hash-to-point */
+pub const RIADZG2A: isize = @RZ2A@;  /* G2 Z for hash-to-point */
+pub const RIADZG2B: isize = @RZ2B@;  /* G2 Z for hash-to-point */
 pub const MODTYPE:usize=@MT@;
 pub const QNRI:usize=@QI@; /* Fp2 QNR 2^i+sqrt(-1) */
 pub const TOWER:usize=@TW@; /* Tower type */
@@ -233,6 +234,25 @@ impl FP {
         let mut a = FP::new_copy(self);
         a.reduce();
         return a.x.iszilch();
+    }
+
+    pub fn islarger(&self) -> isize {
+        if self.iszilch() {
+            return 0;
+        }
+        let mut sx = BIG::new_ints(&rom::MODULUS);
+        let fx=self.redc();
+        sx.sub(&fx); sx.norm();
+        return BIG::comp(&fx,&sx);
+    }
+
+    pub fn tobytes(&self,b: &mut [u8]) {
+        self.redc().tobytes(b)
+    }
+
+    pub fn frombytes(b: &[u8]) -> FP {
+        let t=BIG::frombytes(b);
+        return FP::new_big(&t);
     }
 
     /* test this=0? */
@@ -741,6 +761,8 @@ impl FP {
         return qr;
     }
 
+// Two for the price of One  - See Hamburg https://eprint.iacr.org/2012/309.pdf
+// Calculate inverse of i and square root of s, return QR
     pub fn tpo(mut i: &mut FP,mut s: &mut FP) -> isize {
         let mut w = FP::new_copy(s);
         let mut t = FP::new_copy(i);

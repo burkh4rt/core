@@ -96,7 +96,7 @@ void ECP4_ZZZ_affine(ECP4_ZZZ *P)
         return;
     }
 
-    FP4_YYY_inv(&iz, &(P->z));
+    FP4_YYY_inv(&iz, &(P->z),NULL);
     FP4_YYY_mul(&(P->x), &(P->x), &iz);
     FP4_YYY_mul(&(P->y), &(P->y), &iz);
 
@@ -154,86 +154,82 @@ void ECP4_ZZZ_output(ECP4_ZZZ *P)
 /* Convert Q to octet string */
 void ECP4_ZZZ_toOctet(octet *W, ECP4_ZZZ *Q,bool compress)
 {
-    BIG_XXX b;
     FP4_YYY qx, qy;
-    FP2_YYY pa, pb;
-
-    W->val[0]=0x06;
+    bool alt=false;
     ECP4_ZZZ_get(&qx, &qy, Q);
+  
+#if (MBITS-1)%8 <= 4
+#ifdef ALLOW_ALT_COMPRESS_ZZZ
+    alt=true;
+#endif
+#endif
 
-    FP2_YYY_copy(&pa, &(qx.a));
-    FP2_YYY_copy(&pb, &(qx.b));
-
-    FP_YYY_redc(b, &(pa.a));
-    BIG_XXX_toBytes(&(W->val[1]), b);
-    FP_YYY_redc(b, &(pa.b));
-    BIG_XXX_toBytes(&(W->val[MODBYTES_XXX+1]), b);
-    FP_YYY_redc(b, &(pb.a));
-    BIG_XXX_toBytes(&(W->val[2 * MODBYTES_XXX+1]), b);
-    FP_YYY_redc(b, &(pb.b));
-    BIG_XXX_toBytes(&(W->val[3 * MODBYTES_XXX+1]), b);
-
-    if (!compress)
+    if (alt)
     {
-        W->val[0] = 0x04;
-        FP2_YYY_copy(&pa, &(qy.a));
-        FP2_YYY_copy(&pb, &(qy.b));
-
-        FP_YYY_redc(b, &(pa.a));
-        BIG_XXX_toBytes(&(W->val[4 * MODBYTES_XXX+1]), b);
-        FP_YYY_redc(b, &(pa.b));
-        BIG_XXX_toBytes(&(W->val[5 * MODBYTES_XXX+1]), b);
-        FP_YYY_redc(b, &(pb.a));
-        BIG_XXX_toBytes(&(W->val[6 * MODBYTES_XXX+1]), b);
-        FP_YYY_redc(b, &(pb.b));
-        BIG_XXX_toBytes(&(W->val[7 * MODBYTES_XXX+1]), b);
-
-        W->len = 8 * MODBYTES_XXX+1;
+        FP4_YYY_toBytes(&(W->val[0]),&qx);
+        if (!compress)
+        {
+            W->len=8*MODBYTES_XXX;
+            FP4_YYY_toBytes(&(W->val[4*MODBYTES_XXX]), &qy);
+        } else {
+            W->val[0]|=0x80;
+            if (FP4_YYY_islarger(&qy)==1) W->val[0]|=0x20;
+            W->len=4*MODBYTES_XXX;
+        }
     } else {
-        W->val[0]=0x02;
-        if (FP4_YYY_sign(&qy)==1) W->val[0] = 0x03;
-        W->len = 4 * MODBYTES_XXX+1;
+        FP4_YYY_toBytes(&(W->val[1]),&qx);
+        if (!compress)
+        {
+            W->val[0] = 0x04;
+            FP4_YYY_toBytes(&(W->val[4 * MODBYTES_XXX+1]), &qy);
+            W->len = 8 * MODBYTES_XXX+1;
+        } else {
+            W->val[0]=0x02;
+            if (FP4_YYY_sign(&qy)==1) W->val[0] = 0x03;
+            W->len = 4 * MODBYTES_XXX+1;
+        }
     }
 }
 
 /* restore Q from octet string */
 int ECP4_ZZZ_fromOctet(ECP4_ZZZ *Q, octet *W)
 {
-    BIG_XXX b;
     FP4_YYY qx, qy;
-    FP2_YYY pa, pb;
-    int typ = W->val[0];
+    bool alt=false;
+    int sgn,cmp,typ = W->val[0];
 
-    BIG_XXX_fromBytes(b, &(W->val[1]));
-    FP_YYY_nres(&(pa.a), b);
-    BIG_XXX_fromBytes(b, &(W->val[MODBYTES_XXX+1]));
-    FP_YYY_nres(&(pa.b), b);
-    BIG_XXX_fromBytes(b, &(W->val[2 * MODBYTES_XXX+1]));
-    FP_YYY_nres(&(pb.a), b);
-    BIG_XXX_fromBytes(b, &(W->val[3 * MODBYTES_XXX+1]));
-    FP_YYY_nres(&(pb.b), b);
+#if (MBITS-1)%8 <= 4
+#ifdef ALLOW_ALT_COMPRESS_ZZZ
+    alt=true;
+#endif
+#endif
 
-    FP2_YYY_copy(&(qx.a), &pa);
-    FP2_YYY_copy(&(qx.b), &pb);
-
-    if (typ == 0x04)
+    if (alt)
     {
-        BIG_XXX_fromBytes(b, &(W->val[4 * MODBYTES_XXX+1]));
-        FP_YYY_nres(&(pa.a), b);
-        BIG_XXX_fromBytes(b, &(W->val[5 * MODBYTES_XXX+1]));
-        FP_YYY_nres(&(pa.b), b);
-        BIG_XXX_fromBytes(b, &(W->val[6 * MODBYTES_XXX+1]));
-        FP_YYY_nres(&(pb.a), b);
-        BIG_XXX_fromBytes(b, &(W->val[7 * MODBYTES_XXX+1]));
-        FP_YYY_nres(&(pb.b), b);
-
-        FP2_YYY_copy(&(qy.a), &pa);
-        FP2_YYY_copy(&(qy.b), &pb);
-
-
-        if (ECP4_ZZZ_set(Q, &qx, &qy)) return 1;
+        W->val[0]&=0x1f;
+        FP4_YYY_fromBytes(&qx,&(W->val[0]));
+        W->val[0]=typ;
+        if (typ&0x80==0)
+        {
+            FP4_YYY_fromBytes(&qy,&(W->val[4*MODBYTES_XXX]));
+            if (ECP4_ZZZ_set(Q, &qx, &qy)) return 1;
+            return 0;
+        } else {
+            if (!ECP4_ZZZ_setx(Q,&qx,0)) return 0;
+            sgn=(typ&0x20)>>5;
+            cmp=FP4_YYY_islarger(&(Q->y));
+            if ((sgn==1 && cmp!=1) || (sgn==0 && cmp==1)) ECP4_ZZZ_neg(Q);
+            return 1;
+        }
     } else {
-        if (ECP4_ZZZ_setx(Q, &qx, typ&1)) return 1;
+        FP4_YYY_fromBytes(&qx,&(W->val[1]));
+        if (typ == 0x04)
+        {
+            FP4_YYY_fromBytes(&qy,&(W->val[4 * MODBYTES_XXX+1]));
+            if (ECP4_ZZZ_set(Q, &qx, &qy)) return 1;
+        } else {
+            if (ECP4_ZZZ_setx(Q, &qx, typ&1)) return 1;
+        }
     }
     return 0;
 }
@@ -296,14 +292,15 @@ int ECP4_ZZZ_set(ECP4_ZZZ *P, FP4_YYY *x, FP4_YYY *y)
 int ECP4_ZZZ_setx(ECP4_ZZZ *P, FP4_YYY *x,int s)
 {
     FP4_YYY y;
+    FP_YYY h;
     ECP4_ZZZ_rhs(&y, x);
 
-    if (!FP4_YYY_qr(&y))
+    if (!FP4_YYY_qr(&y,&h))
     {
         ECP4_ZZZ_inf(P);
         return 0;
     }
-    FP4_YYY_sqrt(&y, &y);
+    FP4_YYY_sqrt(&y, &y, &h);
     FP4_YYY_copy(&(P->x), x);
     FP4_YYY_copy(&(P->y), &y);
     FP4_YYY_one(&(P->z));
@@ -573,7 +570,7 @@ void ECP4_ZZZ_frob_constants(FP2_YYY F[3])
 
 #if SEXTIC_TWIST_ZZZ == M_TYPE
     FP2_YYY_mul_ip(&F[1]);      // (1+i)^12/12.(1+i)^(p-7)/12 = (1+i)^(p+5)/12
-    FP2_YYY_inv(&F[1], &F[1]);      // (1+i)^-(p+5)/12
+    FP2_YYY_inv(&F[1], &F[1],NULL);      // (1+i)^-(p+5)/12
     FP2_YYY_sqr(&F[0], &F[1]);      // (1+i)^-(p+5)/6
 #endif
 
@@ -776,11 +773,11 @@ void ECP4_ZZZ_map2point(ECP4_ZZZ *Q,FP4_YYY *H)
     FP4_YYY_copy(&T,H);
     sgn=FP4_YYY_sign(&T);
 
-    FP_YYY_from_int(&Z,RIADZG2_YYY);
+    FP_YYY_from_int(&Z,RIADZG2A_YYY);
     FP4_YYY_from_FP(&A,&Z);
     ECP4_ZZZ_rhs(&A,&A);  // A=g(Z)
 
-    FP4_YYY_sqrt(&W,&A);
+    FP4_YYY_sqrt(&W,&A,NULL);
     FP_YYY_rcopy(&s,SQRTm3_YYY);
 
     FP_YYY_mul(&Z,&Z,&s);
@@ -793,7 +790,7 @@ void ECP4_ZZZ_map2point(ECP4_ZZZ *Q,FP4_YYY *H)
 
     FP4_YYY_qmul(&NY,&NY,&Z);
 
-    FP4_YYY_inv(&NY,&NY);     // tv3=inv0(tv1*tv2*Z*sqrt(-3))
+    FP4_YYY_inv(&NY,&NY,NULL);     // tv3=inv0(tv1*tv2*Z*sqrt(-3))
     FP4_YYY_qmul(&W,&W,&Z); // tv4=Z*sqrt(-3).sqrt(g(Z))
     if (FP4_YYY_sign(&W)==1)
     {
@@ -805,7 +802,7 @@ void ECP4_ZZZ_map2point(ECP4_ZZZ *Q,FP4_YYY *H)
     FP4_YYY_mul(&W,&W,&Y);
     FP4_YYY_mul(&W,&W,&NY);     // tv5=u*tv1*tv3*tv4*Z*sqrt(-3)
 
-    FP_YYY_from_int(&s,RIADZG2_YYY);
+    FP_YYY_from_int(&s,RIADZG2A_YYY);
     FP4_YYY_from_FP(&X1,&s);
 
     FP4_YYY_copy(&X3,&X1);
@@ -824,11 +821,11 @@ void ECP4_ZZZ_map2point(ECP4_ZZZ *Q,FP4_YYY *H)
     FP4_YYY_add(&X3,&X3,&A); FP4_YYY_norm(&X3);
 
     ECP4_ZZZ_rhs(&W,&X2);
-    FP4_YYY_cmove(&X3,&X2,FP4_YYY_qr(&W));
+    FP4_YYY_cmove(&X3,&X2,FP4_YYY_qr(&W,NULL));
     ECP4_ZZZ_rhs(&W,&X1);
-    FP4_YYY_cmove(&X3,&X1,FP4_YYY_qr(&W));
+    FP4_YYY_cmove(&X3,&X1,FP4_YYY_qr(&W,NULL));
     ECP4_ZZZ_rhs(&W,&X3);
-    FP4_YYY_sqrt(&Y,&W);
+    FP4_YYY_sqrt(&Y,&W,NULL);
     
     ne=FP4_YYY_sign(&Y)^sgn;
     FP4_YYY_neg(&W,&Y); FP4_YYY_norm(&W);

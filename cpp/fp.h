@@ -31,8 +31,6 @@ using namespace core;
 #define FEXCESS_YYY (((sign32)1<<MAXXES_YYY)-1)		    /**< 2^(BASEBITS*NLEN-MODBITS) - normalised BIG can be multiplied by less than this before reduction */
 #define OMASK_YYY (-((chunk)(1)<<TBITS_YYY))            /**<  for masking out overflow bits */
 
-//#define BIG_ENDIAN_SIGN_YYY 
-
 namespace YYY {
 
 /**
@@ -50,12 +48,12 @@ extern const XXX::BIG Modulus;	/**< Actual Modulus set in rom_field*.c */
 extern const XXX::BIG ROI;	    /**< Root of Unity  set in rom_field*.c */
 extern const XXX::BIG R2modp;	/**< Montgomery constant */
 extern const chunk MConst;		/**< Constant associated with Modulus - for Montgomery = 1/p mod 2^BASEBITS */
-extern const XXX::BIG SQRTm3; /**< Square root of -3 */
+extern const XXX::BIG SQRTm3;      /**< Square root of -3 */
 extern const XXX::BIG CRu;    /**< Cube Root of Unity */
 //extern const int BTset;			/**< Set Bit in Generalised Mersenne */
 extern const XXX::BIG Fra; /**< real part of Pairing-friendly curve Frobenius Constant */
 extern const XXX::BIG Frb; /**< imaginary part of Pairing-friendly curve Frobenius Constant */
-
+extern const XXX::BIG TWK; /**< Tweak for square roots, pre-calculated from field norm */
 //#define FUSED_MODMUL
 //#define DEBUG_REDUCE
 
@@ -76,6 +74,26 @@ extern void FP_from_int(FP *x,int a);
  */
 extern int FP_iszilch(FP *x);
 
+/**	@brief Tests for lexically largest 
+ *
+	@param x FP number to be tested if larger than -x
+	@return 1 if larger, else returns 0
+ */
+extern int FP_islarger(FP *x);
+
+/**	@brief Serialize out FP  
+ *
+    @param b buffer for output
+	@param x FP number to be serialized
+ */
+extern void FP_toBytes(char *b,FP *x);
+
+/**	@brief Serialize in FP  
+ *
+	@param x FP number to be serialized
+    @param b buffer for input
+ */
+extern void FP_fromBytes(FP *x,char *b);
 
 /**	@brief Tests for FP equal to one mod Modulus
  *

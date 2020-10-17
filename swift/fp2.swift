@@ -97,6 +97,47 @@ public struct FP2
         return (a.iszilch() && b.iszilch())
     }
     
+    func islarger() -> Int
+    {
+        if iszilch() {
+            return 0
+        }
+        let cmp=b.islarger()
+        if cmp != 0 {
+            return cmp
+        }
+        return a.islarger()
+    }
+
+    func toBytes(_ bf:inout [UInt8])
+    {
+        let RM=Int(CONFIG_BIG.MODBYTES)
+        var t=[UInt8](repeating: 0,count: RM) 
+	    b.toBytes(&t)
+	    for i in 0 ..< RM {
+	    	bf[i]=t[i]
+	    }
+	    a.toBytes(&t)
+	    for i in 0 ..< RM {
+		    bf[i+RM]=t[i]
+	    }        
+    }
+
+    static func fromBytes(_ bf: [UInt8]) -> FP2
+    {
+        let RM=Int(CONFIG_BIG.MODBYTES)
+        var t=[UInt8](repeating: 0,count: RM) 
+	    for i in 0 ..< RM {
+            t[i]=bf[i]
+        }
+        let tb=FP.fromBytes(t)
+	    for i in 0 ..< RM {
+            t[i]=bf[i+RM]
+	    }
+        let ta=FP.fromBytes(t)
+	    return FP2(ta,tb)
+    }
+
     mutating func cmove(_ g:FP2,_ d:Int)
     {
         a.cmove(g.a,d)
@@ -319,45 +360,68 @@ public struct FP2
         copy(r)
     }*/
 
-    func qr() -> Int
+    func qr(_ h:inout FP?) -> Int
     {
-        var pNIL:FP?=nil
+    //    var pNIL:FP?=nil
         var c=FP2(self) 
         c.conj()
         c.mul(self)
-        return c.geta().qr(&pNIL)
+        return c.geta().qr(&h)
     }
 
     /* sqrt(a+ib) = sqrt(a+sqrt(a*a-n*b*b)/2)+ib/(2*sqrt(a+sqrt(a*a-n*b*b)/2)) */
     /* returns true if this is QR */
-    mutating func sqrt()
+    mutating func sqrt(_ h: FP?)
     {
         if iszilch() {return}
-        var pNIL:FP?=nil
         var w1=FP(b)
         var w2=FP(a)
         var w3=FP(a)
+        var w4=FP()
+        var hint:FP?=FP()
+
         w1.sqr(); w2.sqr(); w1.add(w2); w1.norm()
         
-        w1=w1.sqrt(nil)
+        w1=w1.sqrt(h)
 
         w2.copy(a); w2.add(w1); w2.norm(); w2.div2()
 
-        w3.copy(a); w3.sub(w1); w3.norm(); w3.div2()
+        w1.copy(b); w1.div2()
+        let qr=w2.qr(&hint)
 
-        w2.cmove(w3,w3.qr(&pNIL))
+// tweak hint
+        w3.copy(hint!); w3.neg(); w3.norm()
+        w4.copy(w2); w4.neg(); w4.norm()
 
-        w2.invsqrt(&w2,&a)
-        w2.mul(a)
-        w2.div2()
+        w2.cmove(w4,1-qr)
+        hint!.cmove(w3,1-qr)
 
- //       w2=w2.sqrt(pNIL)
- //       a.copy(w2)
- //       w2.add(w2); w2.norm()
- //       w2.inverse(pNIL)
+        a.copy(w2.sqrt(hint))
+        w3.copy(w2); w3.inverse(hint)
+        w3.mul(a)
+        b.copy(w3); b.mul(w1)
+        w4.copy(a)
 
-        b.mul(w2)
-   
+        a.cmove(b,1-qr)
+        b.cmove(w4,1-qr)
+
+/*
+        a.copy(w2.sqrt(hint))
+        w3.copy(w2); w3.inverse(hint)
+        w3.mul(a)
+        b.copy(w3); b.mul(w1)
+
+        hint!.neg(); hint!.norm()
+        w2.neg(); w2.norm()
+
+        w4.copy(w2.sqrt(hint))
+        w3.copy(w2); w3.inverse(hint)
+        w3.mul(w4)
+        w3.mul(w1)
+
+        a.cmove(w3,1-qr)
+        b.cmove(w4,1-qr)
+*/
         let sgn=self.sign()
         var nr=FP2(self)
         nr.neg(); nr.norm()
@@ -375,9 +439,9 @@ public struct FP2
     }
 
     /* self=1/self */
-    mutating func inverse()
+    mutating func inverse(_ h: FP?)
     {
-        let pNIL:FP?=nil
+        //let pNIL:FP?=nil
         norm();
         var w1=FP(a)
         var w2=FP(b)
@@ -385,7 +449,7 @@ public struct FP2
         w1.sqr()
         w2.sqr()
         w1.add(w2)
-        w1.inverse(pNIL)
+        w1.inverse(h)
         a.mul(w1)
         w1.neg(); w1.norm()
         b.mul(w1)
@@ -428,7 +492,8 @@ public struct FP2
     mutating func div_ip()
     {
         var z=FP2(1<<CONFIG_FIELD.QNRI,1)
-        z.inverse()
+        let pNIL:FP?=nil
+        z.inverse(pNIL)
         norm()
         mul(z)
 	if CONFIG_FIELD.TOWER==CONFIG_FIELD.POSITOWER {

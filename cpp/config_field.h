@@ -31,7 +31,10 @@
 #define MAXXES_YYY @SH@
 #define QNRI_YYY @QI@
 #define RIADZ_YYY @RZ@
-#define RIADZG2_YYY @RZ2@
+#define RIADZG2A_YYY @RZ2A@
+#define RIADZG2B_YYY @RZ2B@
 #define TOWER_YYY @TW@
+
+//#define BIG_ENDIAN_SIGN_YYY 
 
 #endif

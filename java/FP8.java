@@ -44,6 +44,35 @@ public final class FP8 {
 		return (a.iszilch() && b.iszilch());
 	}
 
+    public int islarger() {
+        if (iszilch()) return 0;
+        int cmp=b.islarger();
+        if (cmp!=0) return cmp;
+        return a.islarger();
+    }
+
+    public void toBytes(byte[] bf) {
+		byte[] t=new byte[4*CONFIG_BIG.MODBYTES];
+        b.toBytes(t);
+		for (int i=0;i<4*CONFIG_BIG.MODBYTES;i++)
+            bf[i]=t[i];
+        a.toBytes(t);
+		for (int i=0;i<4*CONFIG_BIG.MODBYTES;i++)
+            bf[i+4*CONFIG_BIG.MODBYTES]=t[i];
+    }
+
+    public static FP8 fromBytes(byte[] bf) {
+		byte[] t=new byte[4*CONFIG_BIG.MODBYTES];
+		for (int i=0;i<4*CONFIG_BIG.MODBYTES;i++)
+            t[i]=bf[i];
+        FP4 tb=FP4.fromBytes(t);
+		for (int i=0;i<4*CONFIG_BIG.MODBYTES;i++)
+            t[i]=bf[i+4*CONFIG_BIG.MODBYTES];
+        FP4 ta=FP4.fromBytes(t);
+        return new FP8(ta,tb);
+    }
+
+
 	public void cmove(FP8 g,int d)
 	{
 		a.cmove(g.a,d);
@@ -313,7 +342,7 @@ public final class FP8 {
 	}
 
 /* this=1/this */
-	public void inverse()
+	public void inverse(FP h)
 	{
 		FP4 t1=new FP4(a);
 		FP4 t2=new FP4(b);
@@ -324,7 +353,7 @@ public final class FP8 {
 		t2.norm();
 		t1.sub(t2); t1.norm();
 
-		t1.inverse();
+		t1.inverse(h);
 
 		a.mul(t1);
 		t1.neg();
@@ -647,24 +676,27 @@ public final class FP8 {
         copy(r);
     }
 */
-    public int qr()
+
+/* PFGE48S
+    public int qr(FP h)
     {
         FP8 c = new FP8(this);
         c.conj();
         c.mul(this);
-        return c.geta().qr();
+        return c.geta().qr(h);
     }
 
 
-/* sqrt(a+ib) = sqrt(a+sqrt(a*a-n*b*b)/2)+ib/(2*sqrt(a+sqrt(a*a-n*b*b)/2)) */
-/* returns true if this is QR */
-	public void sqrt()
+// sqrt(a+ib) = sqrt(a+sqrt(a*a-n*b*b)/2)+ib/(2*sqrt(a+sqrt(a*a-n*b*b)/2)) 
+// returns true if this is QR 
+	public void sqrt(FP h)
 	{
 		if (iszilch()) return;
 		FP4 wa=new FP4(a);
         FP4 wb=new FP4(a);
 		FP4 ws=new FP4(b);
 		FP4 wt=new FP4(a);
+        FP hint=new FP();
 
 		ws.sqr();
 		wa.sqr();
@@ -674,28 +706,36 @@ public final class FP8 {
 
 		ws.copy(wa); ws.norm();
 
-        ws.sqrt();
+        ws.sqrt(h);
 
 		wa.copy(wt); wa.add(ws); 
         wa.norm(); wa.div2();
 
-		wb.copy(wt); wb.sub(ws); 
-        wb.norm(); wb.div2();
+        wb.copy(b); wb.div2();
+        int qr=wa.qr(hint);
 
-        wa.cmove(wb,wb.qr());
-        wa.sqrt();
+// tweak hint - multiply old hint by Norm(1/Beta)^e where Beta is irreducible polynomial
+        ws.copy(wa);
+        FP twk=new FP(new BIG(ROM.TWK));
+        twk.mul(hint);
+        ws.div_i(); ws.norm();
 
-		wt.copy(b);
-		ws.copy(wa); ws.add(wa); ws.norm();
-		ws.inverse();
+        wa.cmove(ws,1-qr);
+        hint.cmove(twk,1-qr);
 
-		wt.mul(ws);
-		a.copy(wa);
-		b.copy(wt);
+        a.copy(wa); a.sqrt(hint);
+        ws.copy(wa); ws.inverse(hint);
+        ws.mul(a);
+        b.copy(ws); b.mul(wb);
+        wt.copy(a);
+
+        a.cmove(b,1-qr);
+        b.cmove(wt,1-qr);
 
         int sgn=this.sign();
         FP8 nr=new FP8(this);
         nr.neg(); nr.norm();
         this.cmove(nr,sgn);
 	}
+PFGE48F */
 }

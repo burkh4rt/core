@@ -17,6 +17,7 @@
  * limitations under the License.
  */
 
+use crate::xxx::big;
 use crate::xxx::big::BIG;
 use crate::xxx::dbig::DBIG;
 use crate::xxx::fp;
@@ -107,6 +108,44 @@ impl FP2 {
     /* test self=0 ? */
     pub fn iszilch(&self) -> bool {
         return self.a.iszilch() && self.b.iszilch();
+    }
+
+    pub fn islarger(&self) -> isize {
+        if self.iszilch() {
+            return 0;
+        }
+        let cmp=self.b.islarger();
+        if cmp!=0 {
+            return cmp;
+        }
+        return self.a.islarger()
+    }
+
+    pub fn tobytes(&self,bf: &mut [u8]) {
+        const MB:usize = big::MODBYTES as usize;
+        let mut t: [u8; MB] = [0; MB];
+        self.b.tobytes(&mut t);
+        for i in 0..MB {
+            bf[i]=t[i];
+        }
+        self.a.tobytes(&mut t);
+        for i in 0..MB {
+            bf[i+MB]=t[i];
+        }       
+    }
+
+    pub fn frombytes(bf: &[u8]) -> FP2 {
+        const MB:usize = big::MODBYTES as usize;
+        let mut t: [u8; MB] = [0; MB];
+        for i in 0..MB {
+            t[i]=bf[i];
+        }
+        let tb=FP::frombytes(&t);
+        for i in 0..MB {
+            t[i]=bf[i+MB];
+        }
+        let ta=FP::frombytes(&t);
+        return FP2::new_fps(&ta,&tb);
     }
 
     pub fn cmove(&mut self, g: &FP2, d: isize) {
@@ -323,27 +362,29 @@ impl FP2 {
         self.copy(&r);
     }*/
 
-    pub fn qr(&mut self) -> isize {
+    pub fn qr(&mut self,h:Option<&mut FP>) -> isize {
         let mut c=FP2::new_copy(self);
         c.conj();
         c.mul(self);
-        return c.getA().qr(None);
+        return c.getA().qr(h);
     }
 
     /* sqrt(a+ib) = sqrt(a+sqrt(a*a-n*b*b)/2)+ib/(2*sqrt(a+sqrt(a*a-n*b*b)/2)) */
-    pub fn sqrt(&mut self) {
+    pub fn sqrt(&mut self,h:Option<&FP>) {
         if self.iszilch() {
             return;
         }
         let mut w1 = FP::new_copy(&self.b);
         let mut w2 = FP::new_copy(&self.a);
         let mut w3 = FP::new_copy(&self.a);
+        let mut w4 = FP::new();
+        let mut hint = FP::new();
 
         w1.sqr();
         w2.sqr();
         w1.add(&w2); w1.norm();
 
-        w2.copy(&w1.sqrt(None));
+        w2.copy(&w1.sqrt(h));
         w1.copy(&w2);
 
         w2.copy(&self.a);
@@ -351,21 +392,42 @@ impl FP2 {
         w2.norm();
         w2.div2();
 
-        w3.copy(&self.a);
-        w3.sub(&w1);
-        w3.norm();
-        w3.div2();
+        w1.copy(&self.b); w1.div2();
+        let qr=w2.qr(Some(&mut hint));
 
-        let d=w3.qr(None);
-        w2.cmove(&w3,d);
+// tweak hint
+        w3.copy(&hint); w3.neg(); w3.norm();
+        w4.copy(&w2); w4.neg(); w4.norm();
 
-        w3.copy(&w2);
-        w3.invsqrt(&mut w2,&mut self.a);
-        w2.mul(&self.a);
-        w2.div2();
+        w2.cmove(&w4,1-qr);
+        hint.cmove(&w3,1-qr);
 
-        self.b.mul(&w2);
+        self.a.copy(&w2.sqrt(Some(&hint)));
+        w3.copy(&w2); w3.inverse(Some(&hint));
+        w3.mul(&self.a);
+        self.b.copy(&w3); self.b.mul(&w1);
+        w4.copy(&self.a);
 
+        self.a.cmove(&self.b,1-qr);
+        self.b.cmove(&w4,1-qr);
+
+/*
+        self.a.copy(&w2.sqrt(Some(&hint)));
+        w3.copy(&w2); w3.inverse(Some(&hint));
+        w3.mul(&self.a);
+        self.b.copy(&w3); self.b.mul(&w1);
+
+        hint.neg(); hint.norm();
+        w2.neg(); w2.norm();
+
+        w4.copy(&w2.sqrt(Some(&hint)));
+        w3.copy(&w2); w3.inverse(Some(&hint));
+        w3.mul(&w4);
+        w3.mul(&w1);
+
+        self.a.cmove(&w3,1-qr);
+        self.b.cmove(&w4,1-qr);
+*/
         let sgn=self.sign();
         let mut nr=FP2::new_copy(&self);
         nr.neg(); nr.norm();
@@ -378,7 +440,7 @@ impl FP2 {
     }
 
     /* self=1/self */
-    pub fn inverse(&mut self) {
+    pub fn inverse(&mut self,h:Option<&FP>) {
         self.norm();
         let mut w1 = FP::new_copy(&self.a);
         let mut w2 = FP::new_copy(&self.b);
@@ -386,7 +448,7 @@ impl FP2 {
         w1.sqr();
         w2.sqr();
         w1.add(&w2);
-        w1.inverse(None);
+        w1.inverse(h);
         self.a.mul(&w1);
         w1.neg();
         w1.norm();
@@ -428,7 +490,7 @@ impl FP2 {
     /* w/=(1+sqrt(-1)) */
     pub fn div_ip(&mut self) {
         let mut z = FP2::new_ints(1 << fp::QNRI, 1);
-        z.inverse();
+        z.inverse(None);
         self.norm();
         self.mul(&z);
         if fp::TOWER == fp::POSITOWER {
